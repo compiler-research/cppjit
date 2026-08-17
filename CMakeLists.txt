@@ -16,13 +16,16 @@ set(CPPINTEROP_GIT_TAG "8d624c621a4b95e36ff73ac708c85a768287478f" CACHE STRING "
 set(CPPINTEROP_SOURCE_DIR "" CACHE PATH
     "Override default CppInterOp built by ExternalProject_Add, with a path to local CppInterOp source")
 
+# Development.Module, not Development: the full component additionally
+# requires libpython (Development.Embed), which manylinux images do not
+# ship — extension modules only need headers and module-link rules.
 set(Python_FIND_VIRTUALENV ONLY)
-find_package(Python COMPONENTS Interpreter Development)
+find_package(Python COMPONENTS Interpreter Development.Module)
 if(NOT Python_FOUND)
     set(Python_FIND_VIRTUALENV STANDARD)
-    find_package(Python COMPONENTS Interpreter Development)
+    find_package(Python COMPONENTS Interpreter Development.Module)
 endif()
-if(NOT Python_Development_FOUND)
+if(NOT Python_Development.Module_FOUND)
     message(FATAL_ERROR "Python development headers not found")
 endif()
 
