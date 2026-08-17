@@ -1,0 +1,62 @@
+name: Wheels
+
+# Build the distributable artifacts -- manylinux and macOS arm64 wheels via
+# cibuildwheel (config in pyproject.toml) plus the sdist; no index publishing.
+# The weekly schedule is a drift canary for the conda-forge/homebrew LLVM.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/wheels.yml'
+      - '.github/wheel_smoke.py'
+      - 'pyproject.toml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'src/interop/**'
+      - 'python/cppjit/_cpython_cppjit.py'
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '30 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wheels-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  wheels:
+    name: wheels ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, label: manylinux-x86_64 }
+          - { os: macos-26,     label: macosx-arm64 }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pypa/cibuildwheel@v4.1.1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.label }}
+          path: wheelhouse/*.whl
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
