@@ -22,7 +22,7 @@ function(cppjit_add_cppinterop)
         -DLLVM_DIR=${LLVM_DIR}
         -DCPPINTEROP_ENABLE_TESTING=${CPPJIT_ENABLE_CPPINTEROP_TESTS}
         -DBUILD_SHARED_LIBS=ON
-        -DCMAKE_INSTALL_PREFIX=${CPPINTEROP_INSTALL_DIR}
+        -DCMAKE_INSTALL_PREFIX=${CPPINTEROP_STAGE_DIR}
         -DCMAKE_INSTALL_LIBDIR=lib
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_CXX_STANDARD=17
@@ -90,7 +90,7 @@ function(cppjit_add_cppinterop)
         PREFIX         "${CMAKE_BINARY_DIR}/CppInterOp"
         CMAKE_ARGS     ${_args}
         BUILD_BYPRODUCTS
-            "${CPPINTEROP_INSTALL_DIR}/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}"
+            "${CPPINTEROP_STAGE_DIR}/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}"
         ${_log_args}
     )
 

@@ -90,8 +90,8 @@ if(Clang_FOUND)
     message(STATUS "Found Clang at ${Clang_DIR}")
 endif()
 
-# CppInterOp is installed at the location cppjit ships at runtime: ask for the
-# site-packages path; fall back to CMAKE_INSTALL_PREFIX for standalone builds.
+# The wrapper's runtime fallback anchor: the site-packages path cppjit ships
+# at, or CMAKE_INSTALL_PREFIX for standalone builds.
 execute_process(
     COMMAND ${Python_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib'))"
     OUTPUT_VARIABLE _python_platlib
@@ -102,7 +102,11 @@ if(_python_platlib)
 else()
     set(CPPINTEROP_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 endif()
-set(CPPINTEROP_INSTALL_DIR "${CPPINTEROP_INSTALL_PREFIX}/cppjit_backend")
+
+# CppInterOp installs into a build-tree stage; cppjit's own install rules copy
+# the shipped subset from there, so site-packages only ever receives files the
+# wheel RECORD owns.
+set(CPPINTEROP_STAGE_DIR "${CMAKE_BINARY_DIR}/cppinterop-stage")
 
 # Include cmake for CppInterOp config and build using ExternalProject.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddCppInterOp.cmake)
@@ -134,7 +138,7 @@ target_include_directories(cppjit PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cpyrt
     ${CMAKE_CURRENT_SOURCE_DIR}/src/interop
-    ${CPPINTEROP_INSTALL_DIR}/include
+    ${CPPINTEROP_STAGE_DIR}/include
     ${Python_INCLUDE_DIRS}
 )
 
@@ -164,17 +168,55 @@ install(TARGETS cppjit
     LIBRARY DESTINATION .
 )
 
-# install CppInterOp libraries and headers
+# Ship exactly one libclangCppInterOp under the unversioned name the loader
+# dlopens: installing the whole lib/ would materialize the SONAME symlink as
+# a second full copy of the library. lib/cppinterop-rt (out-of-process JIT
+# support) is deliberately not shipped; CppInterOp falls back gracefully and
+# CPPINTEROP_RUNTIME_DIR remains the escape hatch.
+option(CPPJIT_STRIP_CPPINTEROP "Strip the installed libclangCppInterOp" ON)
+set(_interop_lib "${CPPINTEROP_STAGE_DIR}/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}")
 install(CODE "
-    file(GLOB _interop_libs \"${CPPINTEROP_INSTALL_DIR}/lib/libclangCppInterOp*\")
-    foreach(_lib \${_interop_libs})
-        file(INSTALL \${_lib} DESTINATION \${CMAKE_INSTALL_PREFIX}/cppjit_backend/lib)
-    endforeach()
+    if(NOT EXISTS \"${_interop_lib}\")
+        message(FATAL_ERROR \"staged CppInterOp library not found: ${_interop_lib}\")
+    endif()
+    get_filename_component(_real_lib \"${_interop_lib}\" REALPATH)
+    execute_process(
+        COMMAND \${CMAKE_COMMAND} -E copy \"\${_real_lib}\"
+            \"\${CMAKE_INSTALL_PREFIX}/cppjit_backend/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}\"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
 ")
 
-install(CODE "
-    file(INSTALL \"${CPPINTEROP_INSTALL_DIR}/include/\" DESTINATION \${CMAKE_INSTALL_PREFIX}/cppjit_backend/include)
-")
+# Debug info dominates the library size; .dynsym survives, so dlsym-driven
+# dispatch is unaffected.
+if(CPPJIT_STRIP_CPPINTEROP)
+    if(APPLE)
+        install(CODE "
+            execute_process(
+                COMMAND strip -x
+                    \"\${CMAKE_INSTALL_PREFIX}/cppjit_backend/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}\"
+                COMMAND_ERROR_IS_FATAL ANY
+            )
+            execute_process(
+                COMMAND codesign -f -s -
+                    \"\${CMAKE_INSTALL_PREFIX}/cppjit_backend/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}\"
+                COMMAND_ERROR_IS_FATAL ANY
+            )
+        ")
+    else()
+        install(CODE "
+            execute_process(
+                COMMAND ${CMAKE_STRIP} --strip-unneeded
+                    \"\${CMAKE_INSTALL_PREFIX}/cppjit_backend/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}\"
+                COMMAND_ERROR_IS_FATAL ANY
+            )
+        ")
+    endif()
+endif()
+
+install(DIRECTORY "${CPPINTEROP_STAGE_DIR}/include/"
+    DESTINATION cppjit_backend/include
+)
 
 # the public cpyrt API headers keep their installed cpyrt/ prefix
 install(FILES
