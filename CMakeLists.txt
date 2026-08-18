@@ -119,11 +119,13 @@ add_library(cppjit SHARED ${CPYRT_SOURCES} ${INTEROP_SOURCES})
 add_dependencies(cppjit CppInterOp)
 
 # The wrapper anchors these relative spellings at its own load location,
-# falling back to the install prefix (see cppinterop_paths()).
+# falling back to the install prefix (see cppinterop_paths()); the clang
+# major names the versioned compiler probed for the runtime resource dir.
 target_compile_definitions(cppjit PRIVATE
     CPPINTEROP_INSTALL_PREFIX="${CPPINTEROP_INSTALL_PREFIX}"
     CPPINTEROP_LIBRARY="cppjit_backend/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}"
     CPPINTEROP_INCLUDE_DIR="cppjit_backend/include"
+    CPPJIT_CLANG_MAJOR="${LLVM_VERSION_MAJOR}"
 )
 
 target_include_directories(cppjit PRIVATE

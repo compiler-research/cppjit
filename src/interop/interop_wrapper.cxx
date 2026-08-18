@@ -113,13 +113,22 @@ static interop::TInterp_t acquireOrCreateInterpreter() {
   if (auto existingInterp = Cpp::GetInterpreter())
     return existingInterp;
 
-#if defined(__arm64__) && defined(__APPLE__)
-  // If on apple silicon don't use -march=native
-  return Cpp::CreateInterpreter({"-std=c++17"}, /*GpuArgs=*/{});
-#else
-  return Cpp::CreateInterpreter({"-std=c++17", "-march=native"},
-                                /*GpuArgs=*/{});
+  std::vector<const char*> args = {"-std=c++17"};
+#if !(defined(__arm64__) && defined(__APPLE__))
+  // apple silicon clang rejects -march=native
+  args.push_back("-march=native");
 #endif
+  // CppInterOp resolves the JIT's builtin headers from its build prefix
+  // or bare `clang`, but distributions spell the required major
+  // clang-<major>; when only that spelling resolves, pass it explicitly.
+  std::string resourceDir;
+  if (Cpp::DetectResourceDir("clang").empty())
+    resourceDir = Cpp::DetectResourceDir("clang-" CPPJIT_CLANG_MAJOR);
+  if (!resourceDir.empty()) {
+    args.push_back("-resource-dir");
+    args.push_back(resourceDir.c_str());
+  }
+  return Cpp::CreateInterpreter(args, /*GpuArgs=*/{});
 }
 
 static void configureInterpreter(const InterOpPaths& Paths) {
