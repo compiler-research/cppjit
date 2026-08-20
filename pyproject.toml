@@ -27,6 +27,37 @@ cmake.build-type = "Release"
 metadata.version.provider = "scikit_build_core.metadata.regex"
 metadata.version.input = "python/cppjit/_version.py"
 
+[tool.cibuildwheel]
+build = ["cp312-*", "cp313-*", "cp314-*"]
+skip = ["*-musllinux*"]
+build-verbosity = 1
+test-command = "python {project}/.github/wheel_smoke.py"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+# LLVM/Clang 21 from conda-forge: built against a glibc within the
+# manylinux_2_28 policy, unlike apt.llvm.org or release-tarball builds.
+# lld is mandatory: BFD ld mis-relaxes R_X86_64_GOTPCRELX relocations in
+# the conda static archives, and the result crashes at the first JIT use.
+before-all = """
+curl -fsSL --retry 5 -o /tmp/micromamba.tar.bz2 https://micro.mamba.pm/api/micromamba/linux-64/latest
+tar -xjf /tmp/micromamba.tar.bz2 -C /usr/local bin/micromamba
+export MAMBA_ROOT_PREFIX=/opt/mamba
+micromamba create -y -p /opt/llvm -c conda-forge 'llvmdev=21.*' 'clangdev=21.*' lld zstd zlib libxml2
+"""
+# Environment variables reach the CppInterOp ExternalProject sub-configure
+# (find_package(zstd) needs the conda env) and auditwheel (LD_LIBRARY_PATH
+# resolves the conda DT_NEEDEDs it grafts); ld.lld comes from PATH.
+environment = { CMAKE_ARGS = "-DLLVM_DIR=/opt/llvm/lib/cmake/llvm -DClang_DIR=/opt/llvm/lib/cmake/clang", CMAKE_PREFIX_PATH = "/opt/llvm", LDFLAGS = "-fuse-ld=lld", PATH = "/opt/llvm/bin:$PATH", LD_LIBRARY_PATH = "/opt/llvm/lib" }
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+before-all = "brew install llvm@21"
+# The deployment target must match the Homebrew bottles the wheel grafts
+# (bottles target the runner's OS); delocate rejects the default 11.0 label.
+environment = { CMAKE_ARGS = "-DLLVM_DIR=/opt/homebrew/opt/llvm@21/lib/cmake/llvm -DClang_DIR=/opt/homebrew/opt/llvm@21/lib/cmake/clang", MACOSX_DEPLOYMENT_TARGET = "26.0" }
+
 [tool.pytest.ini_options]
 testpaths = ["test"]
 pythonpath = ["test"]

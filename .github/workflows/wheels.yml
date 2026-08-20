@@ -1,0 +1,118 @@
+name: Wheels
+
+# Build the distributable artifacts -- manylinux and macOS arm64 wheels via
+# cibuildwheel (config in pyproject.toml) plus the sdist; no index publishing.
+# The weekly schedule is a drift canary for the conda-forge/homebrew LLVM.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/wheels.yml'
+      - '.github/wheel_smoke.py'
+      - 'pyproject.toml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'src/interop/**'
+      - 'python/cppjit/_cpython_cppjit.py'
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '30 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wheels-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  wheels:
+    name: wheels ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, label: manylinux-x86_64 }
+          - { os: macos-26,     label: macosx-arm64 }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pypa/cibuildwheel@v4.2.0
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.label }}
+          path: wheelhouse/*.whl
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # Install the linux wheel on a plain runner, outside the manylinux
+  # container it was built in, and run the full suite against it.
+  test-wheel:
+    name: test wheel (full suite)
+    needs: wheels
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheels-manylinux-x86_64
+          path: wheelhouse
+
+      - name: Install the LLVM the wheel requires at runtime
+        # The JIT needs the builtin headers of the wheel's LLVM major;
+        # the loader detects them from `clang` or `clang-21` on PATH.
+        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+
+      - name: Install the wheel and the test requirements
+        run: |
+          python -m venv wheel-venv
+          wheel-venv/bin/pip install wheelhouse/cppjit-*cp312*.whl
+          wheel-venv/bin/pip install -r requirements.txt
+
+      - name: Smoke the wheel outside pytest
+        # pytest captures output at the fd level, so a native abort during
+        # collection dies silently; this surfaces interpreter-boot errors.
+        run: |
+          clang --version
+          clang-21 -print-resource-dir
+          wheel-venv/bin/python -X faulthandler .github/wheel_smoke.py
+
+      - name: Run the test suite against the installed wheel
+        env:
+          # match the CI cells, which run the interpreter under C++20
+          CPPINTEROP_EXTRA_INTERPRETER_ARGS: -std=c++20
+        run: |
+          cd test
+          make -j4 PYTHON=$GITHUB_WORKSPACE/wheel-venv/bin/python
+          rc=0
+          $GITHUB_WORKSPACE/wheel-venv/bin/python -X faulthandler -m pytest -ra \
+            > pytest.log 2>&1 || rc=$?
+          tail -80 pytest.log
+          exit $rc
+
+      - name: Fail on dependency-driven skips
+        # "0 failed" proves nothing about tests that silently stopped
+        # running; a skip naming a missing module means the wheel venv
+        # lost dependency coverage.
+        run: "! grep -iE '^SKIPPED.*(no module named|could not import|module .* not installed)' test/pytest.log"
