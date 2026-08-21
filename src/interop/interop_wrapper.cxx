@@ -78,6 +78,7 @@ static inline bool is_integral(std::string& s) {
 struct InterOpPaths {
   std::string Library;
   std::string IncludeDir;
+  std::string ClangIncludeDir; // empty when the bundled headers are absent
 };
 
 // One relative layout, two anchors: prefer CppInterOp next to our own load
@@ -94,8 +95,17 @@ static InterOpPaths cppinterop_paths() {
       anchor = here;
   }
 #endif
-  return {(anchor / CPPINTEROP_LIBRARY).string(),
-          (anchor / CPPINTEROP_INCLUDE_DIR).string()};
+  InterOpPaths Paths{(anchor / CPPINTEROP_LIBRARY).string(),
+                     (anchor / CPPINTEROP_INCLUDE_DIR).string(),
+                     {}};
+  // The builtin headers of the build clang ship with every installed
+  // package (see the CMake install rule); a raw build tree has none and
+  // falls back to resource-dir detection.
+  const std::filesystem::path bundled = anchor / CPPJIT_CLANG_INCLUDE_DIR;
+  std::error_code ec;
+  if (std::filesystem::exists(bundled / "include", ec))
+    Paths.ClangIncludeDir = bundled.string();
+  return Paths;
 }
 
 // The one place libclangCppInterOp is dlopen'd.
@@ -109,7 +119,8 @@ static bool loadDispatchAPI(const InterOpPaths& Paths) {
 
 // CppInterOp itself appends CPPINTEROP_EXTRA_INTERPRETER_ARGS inside
 // CreateInterpreter, so nothing needs to be forwarded from here.
-static interop::TInterp_t acquireOrCreateInterpreter() {
+static interop::TInterp_t
+acquireOrCreateInterpreter(const InterOpPaths& Paths) {
   if (auto existingInterp = Cpp::GetInterpreter())
     return existingInterp;
 
@@ -119,10 +130,10 @@ static interop::TInterp_t acquireOrCreateInterpreter() {
   args.push_back("-march=native");
 #endif
   // Without clang's builtin headers the interpreter fails at its first
-  // #include. CppInterOp probes only bare `clang`; when just
-  // clang-<major> is installed, resolve and pass it explicitly.
-  std::string resourceDir;
-  if (Cpp::DetectResourceDir("clang").empty())
+  // #include. Prefer the bundled copy: it matches the build clang and
+  // needs no LLVM on the host.
+  std::string resourceDir = Paths.ClangIncludeDir;
+  if (resourceDir.empty() && Cpp::DetectResourceDir("clang").empty())
     resourceDir = Cpp::DetectResourceDir("clang-" CPPJIT_CLANG_MAJOR);
   if (!resourceDir.empty()) {
     args.push_back("-resource-dir");
@@ -219,7 +230,7 @@ extern "C" int LoadCppInterOp() {
     if (!loadDispatchAPI(Paths))
       return;
 
-    acquireOrCreateInterpreter();
+    acquireOrCreateInterpreter(Paths);
     configureInterpreter(Paths);
     preloadHeaders();
     defineRuntimeHelpers();

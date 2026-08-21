@@ -125,6 +125,7 @@ target_compile_definitions(cppjit PRIVATE
     CPPINTEROP_LIBRARY="cppjit_backend/lib/libclangCppInterOp${CMAKE_SHARED_LIBRARY_SUFFIX}"
     CPPINTEROP_INCLUDE_DIR="cppjit_backend/include"
     CPPJIT_CLANG_MAJOR="${LLVM_VERSION_MAJOR}"
+    CPPJIT_CLANG_INCLUDE_DIR="cppjit_backend/lib/clang/${LLVM_VERSION_MAJOR}"
 )
 
 target_include_directories(cppjit PRIVATE
@@ -174,6 +175,18 @@ install(CODE "
 install(CODE "
     file(INSTALL \"${CPPINTEROP_INSTALL_DIR}/include/\" DESTINATION \${CMAKE_INSTALL_PREFIX}/cppjit_backend/include)
 ")
+
+# ship the builtin headers of the build clang, laid out as a headers-only
+# resource dir: only include/ ships
+set(_clang_resource_dir "${LLVM_LIBRARY_DIR}/clang/${LLVM_VERSION_MAJOR}")
+if(NOT EXISTS "${_clang_resource_dir}/include")
+    message(FATAL_ERROR
+        "No builtin headers at ${_clang_resource_dir}/include; the LLVM at "
+        "${LLVM_DIR} carries no clang resource directory")
+endif()
+install(DIRECTORY "${_clang_resource_dir}/include/"
+    DESTINATION "cppjit_backend/lib/clang/${LLVM_VERSION_MAJOR}/include"
+)
 
 # the public cpyrt API headers keep their installed cpyrt/ prefix
 install(FILES
