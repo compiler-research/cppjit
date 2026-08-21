@@ -1200,6 +1200,11 @@ interop::TCppType_t interop::GetMethodReturnType(TCppMethod_t method) {
   return Cpp::GetFunctionReturnType(method);
 }
 
+interop::AllocType interop::IsAllocator(TCppMethod_t method) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::IsAllocator(method);
+}
+
 std::string interop::GetMethodReturnTypeAsString(TCppMethod_t method) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::GetTypeAsString(

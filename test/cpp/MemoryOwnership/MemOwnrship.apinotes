@@ -1,0 +1,9 @@
+Name: MemOwnrship
+Functions:
+    - Name: memOwnAllocGlobal
+      SwiftReturnOwnership: cppAllocNew
+Tags:
+    - Name: memOwn
+      Methods:
+        - Name: memOwnAllocator
+          SwiftReturnOwnership: cppAllocNew
