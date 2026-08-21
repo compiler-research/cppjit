@@ -155,6 +155,12 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
     CPPInstance* cppres =
         (CPPInstance*)(CPPInstance_Check(result) ? result : nullptr);
 
+    interop::AllocType AT =
+        pymeth->fMethodInfo->fMethods[0]->GetAllocBehaviour();
+    if (AT != interop::AllocType::None && AT != interop::AllocType::Null &&
+        AT != interop::AllocType::Unknown)
+      pymeth->fMethodInfo->fFlags |= CallContext::kIsCreator;
+
     // if this method creates new objects, always take ownership
     if (IsCreator(pymeth->fMethodInfo->fFlags)) {
 

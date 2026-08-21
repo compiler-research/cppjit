@@ -44,6 +44,7 @@ typedef Cpp::FuncRef TCppMethod_t;
 typedef Cpp::InterpRef TInterp_t;
 typedef size_t TCppIndex_t;
 typedef void* TCppFuncAddr_t;
+typedef Cpp::AllocType AllocType;
 
 // direct interpreter access -------------------------------------------------
 RPY_EXPORTED
@@ -297,6 +298,8 @@ RPY_EXPORTED
 std::string GetDoxygenComment(TCppScope_t scope, bool strip_markers = true);
 RPY_EXPORTED
 bool IsConstMethod(TCppMethod_t);
+RPY_EXPORTED
+AllocType IsAllocator(TCppMethod_t);
 // Templated method/function reflection information
 // ------------------------------------
 RPY_EXPORTED
