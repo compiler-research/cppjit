@@ -92,6 +92,18 @@ struct ObjectRef {
   friend bool operator==(ObjectRef a, ObjectRef b) { return a.data == b.data; }
   friend bool operator!=(ObjectRef a, ObjectRef b) { return !(a == b); }
 };
+
+enum class AllocType : unsigned char {
+  None,
+  New,
+  NewArr,
+  Malloc,
+  Unknown,
+  CustomAlloc,
+  Null,
+  OperatorNew,
+  OperatorNewArr
+};
 } // namespace Cpp
 
 template <> struct std::hash<Cpp::DeclRef> {
@@ -122,6 +134,7 @@ typedef Cpp::ObjectRef TCppObject_t;
 typedef Cpp::FuncRef TCppMethod_t;
 typedef size_t TCppIndex_t;
 typedef void* TCppFuncAddr_t;
+typedef Cpp::AllocType AllocType;
 
 // direct interpreter access -------------------------------------------------
 CPPJIT_IMPORT
@@ -368,6 +381,10 @@ CPPJIT_IMPORT
 std::string GetDoxygenComment(TCppScope_t scope, bool strip_markers = true);
 CPPJIT_IMPORT
 bool IsConstMethod(TCppMethod_t);
+CPPJIT_IMPORT
+bool IsAllocator(TCppMethod_t);
+CPPJIT_IMPORT
+AllocType GetAllocType(TCppMethod_t);
 // Templated method/function reflection information
 // ------------------------------------
 CPPJIT_IMPORT

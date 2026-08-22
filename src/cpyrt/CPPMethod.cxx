@@ -34,6 +34,7 @@ extern PyObject* gBusException;
 extern PyObject* gSegvException;
 extern PyObject* gIllException;
 extern PyObject* gAbrtException;
+extern bool gUseAllocAnalyzer;
 } // namespace cppjit::cpyrt
 
 //- public helper ------------------------------------------------------------
@@ -749,6 +750,28 @@ PyObject* cpyrt::CPPMethod::GetArgDefault(int iarg, bool silent) {
 
 bool cpyrt::CPPMethod::IsConst() { return interop::IsConstMethod(GetMethod()); }
 
+//----------------------------------------------------------------------------
+// FIXME: For now every allocation is assumed to be done with `new`
+// will be fixed soon. Also the reason function returns an AllocType
+// instead of bool, IsAllocator function from CppInterOp changed a little,
+// but these changes did not merged to main yet, another reason is next PR
+// will add user-optional analyzer so the function needs to return allocation
+// way
+interop::AllocType cpyrt::CPPMethod::GetAllocBehaviour() {
+  if (fAllocType.has_value())
+    return *fAllocType;
+  if (interop::IsAllocator(GetMethod())) {
+    fAllocType = interop::AllocType::New;
+    return interop::AllocType::New;
+  }
+  if (gUseAllocAnalyzer) {
+    interop::AllocType AT = interop::GetAllocType(GetMethod());
+    fAllocType = AT;
+    return AT;
+  }
+  fAllocType = interop::AllocType::None;
+  return interop::AllocType::None;
+}
 //----------------------------------------------------------------------------
 PyObject* cpyrt::CPPMethod::GetScopeProxy() {
   // Get or build the scope of this method.
