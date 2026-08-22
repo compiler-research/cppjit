@@ -29,3 +29,20 @@ class TestMEMORYANALYSIS:
         obj = cppjit.gbl.allocTestReturns()
         assert type(obj) == cppjit.gbl.memAnalysisKlass
         assert obj.__python_owns__
+
+    def test03_analyzer_new(self):
+        import cppjit
+
+        cppjit._backend.SetUseAllocAnalyzer(True)
+        obj = cppjit.gbl.allocNew()
+        assert type(obj) == cppjit.gbl.memAnalysisKlass
+        assert obj.__python_owns__
+
+    def test04_analyzer_new_default(self):
+        import cppjit
+
+        cppjit._backend.SetUseAllocAnalyzer(False)
+        obj = cppjit.gbl.allocNew2()
+        assert type(obj) == cppjit.gbl.memAnalysisKlass
+        assert not (obj.__python_owns__)
+        obj.__python_owns__ = True

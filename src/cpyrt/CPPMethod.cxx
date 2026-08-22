@@ -34,6 +34,7 @@ extern PyObject* gBusException;
 extern PyObject* gSegvException;
 extern PyObject* gIllException;
 extern PyObject* gAbrtException;
+extern bool gUseAllocAnalyzer;
 } // namespace cppjit::cpyrt
 
 //- public helper ------------------------------------------------------------
@@ -762,6 +763,11 @@ interop::AllocType cpyrt::CPPMethod::GetAllocBehaviour() {
   if (interop::IsAllocator(GetMethod())) {
     fAllocType = interop::AllocType::New;
     return interop::AllocType::New;
+  }
+  if (gUseAllocAnalyzer) {
+    interop::AllocType AT = interop::GetAllocType(GetMethod());
+    fAllocType = AT;
+    return AT;
   }
   fAllocType = interop::AllocType::None;
   return interop::AllocType::None;

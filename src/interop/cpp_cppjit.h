@@ -309,6 +309,8 @@ RPY_EXPORTED
 bool IsConstMethod(TCppMethod_t);
 RPY_EXPORTED
 bool IsAllocator(TCppMethod_t);
+RPY_EXPORTED
+AllocType GetAllocType(TCppMethod_t);
 // Templated method/function reflection information
 // ------------------------------------
 RPY_EXPORTED

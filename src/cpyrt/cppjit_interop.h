@@ -383,6 +383,8 @@ CPPJIT_IMPORT
 bool IsConstMethod(TCppMethod_t);
 CPPJIT_IMPORT
 bool IsAllocator(TCppMethod_t);
+CPPJIT_IMPORT
+AllocType GetAllocType(TCppMethod_t);
 // Templated method/function reflection information
 // ------------------------------------
 CPPJIT_IMPORT

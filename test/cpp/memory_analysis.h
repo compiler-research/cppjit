@@ -10,4 +10,6 @@ class memAnalysisKlass {
 __attribute__((malloc)) memAnalysisKlass* allocTest();
 __attribute__((ownership_returns(malloc))) memAnalysisKlass* allocTestReturns();
 
+inline memAnalysisKlass* allocNew() { return new memAnalysisKlass; }
+inline memAnalysisKlass* allocNew2() { return new memAnalysisKlass; }
 #endif // MEMORY_ANALYSIS_H

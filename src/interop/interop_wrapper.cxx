@@ -1189,6 +1189,11 @@ bool interop::IsAllocator(TCppMethod_t method) {
   return Cpp::IsAllocator(method);
 }
 
+interop::AllocType interop::GetAllocType(TCppMethod_t method) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::GetAllocType(method);
+}
+
 std::string interop::GetMethodReturnTypeAsString(TCppMethod_t method) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::GetTypeAsString(
