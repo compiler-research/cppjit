@@ -3,7 +3,7 @@
 
 //////////////////////////////////////////////////////////////////////////////
 //                                                                          //
-// Cpycppjit::interop::CPPInstance //
+// cppjit::cpyrt::CPPInstance                                               //
 //                                                                          //
 // Python-side proxy, encapsulaties a C++ object.                           //
 //                                                                          //
@@ -62,7 +62,7 @@ public:
   // access to C++ pointer and type
   void* GetObject();
   void*& GetObjectRaw() { return IsExtended() ? *(void**)fObject : fObject; }
-  cppjit::interop::TCppScope_t ObjectIsA(bool check_smart = true) const;
+  interop::TCppScope_t ObjectIsA(bool check_smart = true) const;
 
   // memory management: ownership of the underlying C++ object
   void PythonOwns();
@@ -74,8 +74,8 @@ public:
   // smart pointer management
   void SetSmart(PyObject* smart_type);
   void* GetSmartObject() { return GetObjectRaw(); }
-  cppjit::interop::TCppScope_t GetSmartIsA() const;
-  cppjit::interop::TCppScope_t GetSmartUnderlyingType() const;
+  interop::TCppScope_t GetSmartIsA() const;
+  interop::TCppScope_t GetSmartUnderlyingType() const;
 
   // cross-inheritance dispatch
   void SetDispatchPtr(void*);
@@ -116,8 +116,7 @@ inline void* CPPInstance::GetObject() {
 
 #ifndef Py_LIMITED_API
 //----------------------------------------------------------------------------
-inline cppjit::interop::TCppScope_t
-CPPInstance::ObjectIsA(bool check_smart) const {
+inline interop::TCppScope_t CPPInstance::ObjectIsA(bool check_smart) const {
   // Retrieve the C++ type identifier (or raw type if smart).
   if (check_smart || !IsSmart())
     return ((CPPClass*)Py_TYPE(this))->fCppType;

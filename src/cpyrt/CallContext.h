@@ -119,7 +119,7 @@ struct CallContext {
 
 public:
   // info/status
-  cppjit::interop::TCppScope_t fCurScope;
+  interop::TCppScope_t fCurScope;
   PyObject* fPyContext;
   uint32_t fFlags;
 

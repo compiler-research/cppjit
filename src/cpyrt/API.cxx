@@ -65,7 +65,7 @@ static bool Initialize() {
   }
 
   if (!gMainDict) {
-    cppjit::cpyrt::PythonGILRAII python_gil_raii;
+    cpyrt::PythonGILRAII python_gil_raii;
     // retrieve the main dictionary
     gMainDict =
         PyModule_GetDict(PyImport_AddModule(const_cast<char*>("__main__")));

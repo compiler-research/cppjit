@@ -71,7 +71,7 @@ struct ExtendedData {
   cpyrt::CPPSmartClass* fSmartClass;
 
   // for back-referencing from Python-derived instances
-  cppjit::cpyrt::DispatchPtr* fDispatchPtr;
+  cpyrt::DispatchPtr* fDispatchPtr;
 
   // for representing T* as a low-level array
   Py_ssize_t fArraySize;

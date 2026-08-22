@@ -8,12 +8,10 @@ namespace cppjit::cpyrt {
 typedef PyObject CPPEnum;
 
 //- creation -----------------------------------------------------------------
-CPPEnum* CPPEnum_New(const std::string& name,
-                     cppjit::interop::TCppScope_t scope);
+CPPEnum* CPPEnum_New(const std::string& name, interop::TCppScope_t scope);
 
 PyObject* pyval_from_enum(const std::string& enum_type, PyObject* pytype,
-                          PyObject* btype,
-                          cppjit::interop::TCppScope_t enum_constant);
+                          PyObject* btype, interop::TCppScope_t enum_constant);
 } // namespace cppjit::cpyrt
 
 #endif // !CPYRT_CPPENUM_H

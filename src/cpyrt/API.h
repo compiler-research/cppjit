@@ -131,8 +131,7 @@ public:
 
 // create a converter based on its full type name and dimensions
 CPYRT_EXTERN Converter* CreateConverter(const std::string& name, cdims_t = 0);
-CPYRT_EXTERN Converter* CreateConverter(cppjit::interop::TCppType_t type,
-                                        cdims_t = 0);
+CPYRT_EXTERN Converter* CreateConverter(interop::TCppType_t type, cdims_t = 0);
 
 // delete a previously created converter
 CPYRT_EXTERN void DestroyConverter(Converter* p);
@@ -155,8 +154,8 @@ public:
   virtual ~Executor();
 
   // callback when executing a function from Python
-  virtual PyObject* Execute(cppjit::interop::TCppMethod_t,
-                            cppjit::interop::TCppObject_t, CallContext*) = 0;
+  virtual PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                            CallContext*) = 0;
 
   // if an executor has state, it will be unique per function, shared otherwise
   virtual bool HasState() { return false; }
@@ -164,8 +163,7 @@ public:
 
 // create an executor based on its full type name
 CPYRT_EXTERN Executor* CreateExecutor(const std::string& name, cdims_t = 0);
-CPYRT_EXTERN Executor* CreateExecutor(cppjit::interop::TCppType_t type,
-                                      cdims_t = 0);
+CPYRT_EXTERN Executor* CreateExecutor(interop::TCppType_t type, cdims_t = 0);
 
 // delete a previously created executor
 CPYRT_EXTERN void DestroyConverter(Converter* p);
@@ -182,8 +180,8 @@ CPYRT_EXTERN bool RegisterExecutorAlias(const std::string& name,
 CPYRT_EXTERN bool UnregisterExecutor(const std::string& name);
 
 // helper for calling into C++ from a custom executor
-CPYRT_EXTERN void* CallVoidP(cppjit::interop::TCppMethod_t,
-                             cppjit::interop::TCppObject_t, CallContext*);
+CPYRT_EXTERN void* CallVoidP(interop::TCppMethod_t, interop::TCppObject_t,
+                             CallContext*);
 
 //- C++ access to cppjit objects ---------------------------------------------
 
@@ -200,9 +198,9 @@ CPYRT_EXTERN void* Instance_AsVoidPtr(PyObject* pyobject);
 CPYRT_EXTERN PyObject* Instance_FromVoidPtr(void* addr,
                                             const std::string& classname,
                                             bool python_owns = false);
-CPYRT_EXTERN PyObject*
-Instance_FromVoidPtr(void* addr, cppjit::interop::TCppScope_t klass_scope,
-                     bool python_owns = false);
+CPYRT_EXTERN PyObject* Instance_FromVoidPtr(void* addr,
+                                            interop::TCppScope_t klass_scope,
+                                            bool python_owns = false);
 // type verifiers for C++ Scope
 CPYRT_EXTERN bool Scope_Check(PyObject* pyobject);
 CPYRT_EXTERN bool Scope_CheckExact(PyObject* pyobject);

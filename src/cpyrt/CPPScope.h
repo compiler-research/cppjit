@@ -35,8 +35,7 @@ namespace cppjit::cpyrt {
       @version 2.0
  */
 
-typedef std::unordered_map<cppjit::interop::TCppObject_t, PyObject*>
-    CppToPyMap_t;
+typedef std::unordered_map<interop::TCppObject_t, PyObject*> CppToPyMap_t;
 namespace Utility {
 struct PyOperators;
 }
@@ -60,7 +59,7 @@ public:
 
 public:
   PyHeapTypeObject fType;
-  cppjit::interop::TCppScope_t fCppType;
+  interop::TCppScope_t fCppType;
   uint32_t fFlags;
   union {
     CppToPyMap_t* fCppObjects;      // classes only
@@ -77,8 +76,8 @@ typedef CPPScope CPPClass;
 
 class CPPSmartClass : public CPPClass {
 public:
-  cppjit::interop::TCppScope_t fUnderlyingType;
-  cppjit::interop::TCppMethod_t fDereferencer;
+  interop::TCppScope_t fUnderlyingType;
+  interop::TCppMethod_t fDereferencer;
 };
 
 //- metatype type and type verification --------------------------------------
@@ -96,8 +95,7 @@ template <typename T> inline bool CPPScope_CheckExact(T* object) {
 }
 
 //- creation -----------------------------------------------------------------
-inline CPPScope* CPPScopeMeta_New(cppjit::interop::TCppScope_t klass,
-                                  PyObject* args) {
+inline CPPScope* CPPScopeMeta_New(interop::TCppScope_t klass, PyObject* args) {
   // Create and initialize a new scope meta class
   CPPScope* pymeta =
       (CPPScope*)PyType_Type.tp_new(&CPPScope_Type, args, nullptr);

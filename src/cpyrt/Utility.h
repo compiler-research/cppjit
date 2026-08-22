@@ -32,13 +32,12 @@ bool AddToClass(PyObject* pyclass, const char* label, PyCallable* pyfunc);
 
 // helpers for dynamically constructing operators
 PyCallable* FindUnaryOperator(PyObject* pyclass, const char* op);
-PyCallable* FindBinaryOperator(
-    PyObject* left, PyObject* right, const char* op,
-    cppjit::interop::TCppScope_t scope = cppjit::interop::TCppScope_t{});
+PyCallable*
+FindBinaryOperator(PyObject* left, PyObject* right, const char* op,
+                   interop::TCppScope_t scope = interop::TCppScope_t{});
 PyCallable* FindBinaryOperator(
     const std::string& lcname, const std::string& rcname, const char* op,
-    cppjit::interop::TCppScope_t scope = cppjit::interop::TCppScope_t{},
-    bool reverse = false);
+    interop::TCppScope_t scope = interop::TCppScope_t{}, bool reverse = false);
 
 // helper for template classes and methods
 enum ArgPreference { kNone, kPointer, kReference, kValue };

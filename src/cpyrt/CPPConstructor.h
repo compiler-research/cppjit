@@ -12,9 +12,9 @@ public:
 
 public:
   PyObject* GetDocString() override;
-  PyObject* Reflex(cppjit::interop::Reflex::RequestId_t,
-                   cppjit::interop::Reflex::FormatId_t =
-                       cppjit::interop::Reflex::OPTIMAL) override;
+  PyObject*
+      Reflex(interop::Reflex::RequestId_t,
+             interop::Reflex::FormatId_t = interop::Reflex::OPTIMAL) override;
 
   PyCallable* Clone() override { return new CPPConstructor(*this); }
   PyObject* Call(CPPInstance*& self, cpyrt_PyArgs_t args, size_t nargsf,
@@ -27,8 +27,7 @@ protected:
 // specialization for multiple inheritance disambiguation
 class CPPMultiConstructor : public CPPConstructor {
 public:
-  CPPMultiConstructor(cppjit::interop::TCppScope_t scope,
-                      cppjit::interop::TCppMethod_t method);
+  CPPMultiConstructor(interop::TCppScope_t scope, interop::TCppMethod_t method);
   CPPMultiConstructor(const CPPMultiConstructor&);
   CPPMultiConstructor& operator=(const CPPMultiConstructor&);
 

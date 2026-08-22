@@ -13,10 +13,8 @@ class CPPInstance;
 
 class CPPDataMember {
 public:
-  void Set(cppjit::interop::TCppScope_t scope,
-           cppjit::interop::TCppScope_t var);
-  void Set(cppjit::interop::TCppScope_t scope, const std::string& name,
-           void* address);
+  void Set(interop::TCppScope_t scope, interop::TCppScope_t var);
+  void Set(interop::TCppScope_t scope, const std::string& name, void* address);
 
   std::string GetName();
   void* GetAddress(CPPInstance* pyobj /* owner */);
@@ -25,8 +23,8 @@ public: // public, as the python C-API works with C structs
   PyObject_HEAD intptr_t fOffset;
   long fFlags;
   Converter* fConverter;
-  cppjit::interop::TCppScope_t fScope;
-  cppjit::interop::TCppScope_t fEnclosingScope;
+  interop::TCppScope_t fScope;
+  interop::TCppScope_t fEnclosingScope;
   PyObject* fDescription;
   PyObject* fDoc;
 
@@ -50,8 +48,8 @@ template <typename T> inline bool CPPDataMember_CheckExact(T* object) {
 }
 
 //- creation -----------------------------------------------------------------
-inline CPPDataMember* CPPDataMember_New(cppjit::interop::TCppScope_t scope,
-                                        cppjit::interop::TCppScope_t var) {
+inline CPPDataMember* CPPDataMember_New(interop::TCppScope_t scope,
+                                        interop::TCppScope_t var) {
   // Create an initialize a new property descriptor, given the C++ datum.
   CPPDataMember* pyprop = (CPPDataMember*)CPPDataMember_Type.tp_new(
       &CPPDataMember_Type, nullptr, nullptr);
@@ -59,9 +57,9 @@ inline CPPDataMember* CPPDataMember_New(cppjit::interop::TCppScope_t scope,
   return pyprop;
 }
 
-inline CPPDataMember*
-CPPDataMember_NewConstant(cppjit::interop::TCppScope_t scope,
-                          const std::string& name, void* address) {
+inline CPPDataMember* CPPDataMember_NewConstant(interop::TCppScope_t scope,
+                                                const std::string& name,
+                                                void* address) {
   // Create an initialize a new property descriptor, given the C++ datum.
   CPPDataMember* pyprop = (CPPDataMember*)CPPDataMember_Type.tp_new(
       &CPPDataMember_Type, nullptr, nullptr);

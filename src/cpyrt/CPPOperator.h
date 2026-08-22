@@ -11,8 +11,8 @@ namespace cppjit::cpyrt {
 
 class CPPOperator : public CPPMethod {
 public:
-  CPPOperator(cppjit::interop::TCppScope_t scope,
-              cppjit::interop::TCppMethod_t method, const std::string& name);
+  CPPOperator(interop::TCppScope_t scope, interop::TCppMethod_t method,
+              const std::string& name);
 
 public:
   PyCallable* Clone() override { return new CPPOperator(*this); }

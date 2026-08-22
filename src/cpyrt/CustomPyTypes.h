@@ -12,7 +12,7 @@ namespace cppjit::cpyrt {
 
 //- custom type representing typedef to pointer of class ---------------------
 struct typedefpointertoclassobject {
-  PyObject_HEAD cppjit::interop::TCppScope_t fCppType;
+  PyObject_HEAD interop::TCppScope_t fCppType;
 };
 
 extern PyTypeObject TypedefPointerToClass_Type;
@@ -52,8 +52,8 @@ class Converter;
 struct vectoriterobject : public indexiterobject {
   void* vi_data;
   Py_ssize_t vi_stride;
-  cppjit::cpyrt::Converter* vi_converter;
-  cppjit::interop::TCppScope_t vi_klass;
+  Converter* vi_converter;
+  interop::TCppScope_t vi_klass;
   int vi_flags;
 
   enum EFlags {

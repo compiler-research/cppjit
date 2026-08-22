@@ -7,7 +7,7 @@
 namespace cppjit::cpyrt {
 
 // make the named C++ class more python-like
-bool Pythonize(PyObject* pyclass, cppjit::interop::TCppScope_t scope);
+bool Pythonize(PyObject* pyclass, interop::TCppScope_t scope);
 
 } // namespace cppjit::cpyrt
 

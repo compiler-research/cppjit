@@ -3,7 +3,7 @@
 
 //////////////////////////////////////////////////////////////////////////////
 //                                                                          //
-// Cpycppjit::interop::CPPExceptionInstance //
+// cppjit::cpyrt::CPPExceptionInstance                                      //
 //                                                                          //
 // Python-side proxy, encapsulaties a C++ exception object.                 //
 //                                                                          //

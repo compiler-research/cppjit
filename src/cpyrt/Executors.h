@@ -17,8 +17,8 @@ struct CallContext;
 class CPYRT_CLASS_EXPORT Executor {
 public:
   virtual ~Executor();
-  virtual PyObject* Execute(cppjit::interop::TCppMethod_t,
-                            cppjit::interop::TCppObject_t, CallContext*) = 0;
+  virtual PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                            CallContext*) = 0;
   virtual bool HasState() { return false; }
 };
 
@@ -35,8 +35,7 @@ protected:
 
 // create/destroy executor from fully qualified type (public API)
 CPYRT_EXPORT Executor* CreateExecutor(const std::string& fullType, cdims_t = 0);
-CPYRT_EXPORT Executor* CreateExecutor(cppjit::interop::TCppType_t type,
-                                      cdims_t = 0);
+CPYRT_EXPORT Executor* CreateExecutor(interop::TCppType_t type, cdims_t = 0);
 CPYRT_EXPORT void DestroyExecutor(Executor* p);
 typedef Executor* (*ef_t)(cdims_t);
 CPYRT_EXPORT bool RegisterExecutor(const std::string& name, ef_t fac);
@@ -45,8 +44,8 @@ CPYRT_EXPORT bool RegisterExecutorAlias(const std::string& name,
 CPYRT_EXPORT bool UnregisterExecutor(const std::string& name);
 
 // helper for the actual call
-CPYRT_EXPORT void* CallVoidP(cppjit::interop::TCppMethod_t,
-                             cppjit::interop::TCppObject_t, CallContext*);
+CPYRT_EXPORT void* CallVoidP(interop::TCppMethod_t, interop::TCppObject_t,
+                             CallContext*);
 
 } // namespace cppjit::cpyrt
 

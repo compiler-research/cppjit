@@ -35,7 +35,7 @@ public:
 // create/destroy converter from fully qualified type (public API)
 CPYRT_EXPORT Converter* CreateConverter(const std::string& fullType,
                                         cdims_t dims = 0);
-CPYRT_EXPORT Converter* CreateConverter(cppjit::interop::TCppType_t type,
+CPYRT_EXPORT Converter* CreateConverter(interop::TCppType_t type,
                                         cdims_t dims = 0);
 CPYRT_EXPORT void DestroyConverter(Converter* p);
 typedef Converter* (*cf_t)(cdims_t d);
@@ -75,11 +75,10 @@ private:
 
 template <bool ISCONST> class InstancePtrConverter : public VoidArrayConverter {
 public:
-  InstancePtrConverter(cppjit::interop::TCppScope_t klass,
-                       bool keepControl = false,
+  InstancePtrConverter(interop::TCppScope_t klass, bool keepControl = false,
                        const std::string& failureMsg = std::string())
       : VoidArrayConverter(keepControl, failureMsg),
-        fClass(cppjit::interop::GetUnderlyingScope(klass)) {}
+        fClass(interop::GetUnderlyingScope(klass)) {}
 
 public:
   bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) override;
@@ -88,7 +87,7 @@ public:
                 PyObject* ctxt = nullptr) override;
 
 protected:
-  cppjit::interop::TCppScope_t fClass;
+  interop::TCppScope_t fClass;
 };
 
 class StrictInstancePtrConverter : public InstancePtrConverter<false> {

@@ -19,8 +19,8 @@ namespace {
 #define CPPJIT_DECL_EXEC(name)                                                 \
   class name##Executor : public Executor {                                     \
   public:                                                                      \
-    PyObject* Execute(cppjit::interop::TCppMethod_t,                           \
-                      cppjit::interop::TCppObject_t, CallContext*) override;   \
+    PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,            \
+                      CallContext*) override;                                  \
   }
 
 // executors for built-ins
@@ -60,8 +60,8 @@ CPPJIT_DECL_EXEC(CString32);
                                                                                \
   public:                                                                      \
     name##ArrayExecutor(dims_t dims) : fShape(dims) {}                         \
-    PyObject* Execute(cppjit::interop::TCppMethod_t,                           \
-                      cppjit::interop::TCppObject_t, CallContext*) override;   \
+    PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,            \
+                      CallContext*) override;                                  \
     bool HasState() override { return true; }                                  \
   }
 CPPJIT_ARRAY_DECL_EXEC(Void);
@@ -94,30 +94,30 @@ CPPJIT_DECL_EXEC(STLWString);
 
 class InstancePtrExecutor : public Executor {
 public:
-  InstancePtrExecutor(cppjit::interop::TCppScope_t klass) : fClass(klass) {}
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  InstancePtrExecutor(interop::TCppScope_t klass) : fClass(klass) {}
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
   bool HasState() override { return true; }
 
 protected:
-  cppjit::interop::TCppScope_t fClass;
+  interop::TCppScope_t fClass;
 };
 
 class InstanceExecutor : public Executor {
 public:
-  InstanceExecutor(cppjit::interop::TCppScope_t klass);
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  InstanceExecutor(interop::TCppScope_t klass);
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
   bool HasState() override { return true; }
 
 protected:
-  cppjit::interop::TCppScope_t fClass;
+  interop::TCppScope_t fClass;
   uint32_t fFlags;
 };
 
 class IteratorExecutor : public InstanceExecutor {
 public:
-  IteratorExecutor(cppjit::interop::TCppScope_t klass);
+  IteratorExecutor(interop::TCppScope_t klass);
 };
 
 CPPJIT_DECL_EXEC(Constructor);
@@ -126,8 +126,8 @@ CPPJIT_DECL_EXEC(PyObject);
 #define CPPJIT_DECL_REFEXEC(name)                                              \
   class name##RefExecutor : public RefExecutor {                               \
   public:                                                                      \
-    PyObject* Execute(cppjit::interop::TCppMethod_t,                           \
-                      cppjit::interop::TCppObject_t, CallContext*) override;   \
+    PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,            \
+                      CallContext*) override;                                  \
   }
 
 CPPJIT_DECL_REFEXEC(Bool);
@@ -152,34 +152,34 @@ CPPJIT_DECL_REFEXEC(STLString);
 // special cases
 class InstanceRefExecutor : public RefExecutor {
 public:
-  InstanceRefExecutor(cppjit::interop::TCppScope_t klass) : fClass(klass) {}
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  InstanceRefExecutor(interop::TCppScope_t klass) : fClass(klass) {}
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
 
 protected:
-  cppjit::interop::TCppScope_t fClass;
+  interop::TCppScope_t fClass;
 };
 
 class InstancePtrPtrExecutor : public InstanceRefExecutor {
 public:
   using InstanceRefExecutor::InstanceRefExecutor;
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
 };
 
 class InstancePtrRefExecutor : public InstanceRefExecutor {
 public:
   using InstanceRefExecutor::InstanceRefExecutor;
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
 };
 
 class InstanceArrayExecutor : public InstancePtrExecutor {
 public:
-  InstanceArrayExecutor(cppjit::interop::TCppScope_t klass, dim_t array_size)
+  InstanceArrayExecutor(interop::TCppScope_t klass, dim_t array_size)
       : InstancePtrExecutor(klass), fSize(array_size) {}
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
 
 protected:
   dim_t fSize;
@@ -189,8 +189,8 @@ class FunctionPointerExecutor : public Executor {
 public:
   FunctionPointerExecutor(const std::string& ret, const std::string& sig)
       : fRetType(ret), fSignature(sig) {}
-  PyObject* Execute(cppjit::interop::TCppMethod_t,
-                    cppjit::interop::TCppObject_t, CallContext*) override;
+  PyObject* Execute(interop::TCppMethod_t, interop::TCppObject_t,
+                    CallContext*) override;
 
 protected:
   std::string fRetType;

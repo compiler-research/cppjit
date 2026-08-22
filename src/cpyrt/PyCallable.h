@@ -22,9 +22,9 @@ public:
   virtual PyObject* GetPrototype(bool show_formalargs = true) = 0;
   virtual PyObject* GetTypeName() { return GetPrototype(false); }
   virtual PyObject* GetDocString() { return GetPrototype(); }
-  virtual PyObject* Reflex(cppjit::interop::Reflex::RequestId_t request,
-                           cppjit::interop::Reflex::FormatId_t format =
-                               cppjit::interop::Reflex::OPTIMAL) {
+  virtual PyObject*
+  Reflex(interop::Reflex::RequestId_t request,
+         interop::Reflex::FormatId_t format = interop::Reflex::OPTIMAL) {
     PyErr_Format(PyExc_ValueError, "unsupported reflex request %d or format %d",
                  request, format);
     return nullptr;
@@ -39,7 +39,7 @@ public:
   virtual bool IsConst() { return false; }
 
   virtual PyObject* GetScopeProxy() = 0;
-  virtual cppjit::interop::TCppFuncAddr_t GetFunctionAddress() = 0;
+  virtual interop::TCppFuncAddr_t GetFunctionAddress() = 0;
 
   virtual PyCallable* Clone() = 0;
 

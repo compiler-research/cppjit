@@ -609,7 +609,7 @@ static PyObject* vector_iter(PyObject* v) {
             vi->vi_flags = vectoriterobject::kNeedLifeLine;
         }
       } else
-        vi->vi_converter = cppjit::cpyrt::CreateConverter(value_type);
+        vi->vi_converter = CreateConverter(value_type);
       if (!vi->vi_stride)
         vi->vi_stride = interop::SizeOfType(value_type);
 

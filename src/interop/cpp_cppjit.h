@@ -94,7 +94,7 @@ TCppType_t GetType(const std::string& name, bool enable_slow_lookup = false);
 RPY_EXPORTED
 bool AppendTypesSlow(const std::string& name,
                      std::vector<Cpp::TemplateArgInfo>& types,
-                     cppjit::interop::TCppScope_t parent = nullptr);
+                     TCppScope_t parent = nullptr);
 RPY_EXPORTED
 TCppType_t GetComplexType(const std::string& element_type);
 RPY_EXPORTED
@@ -227,7 +227,7 @@ void GetAllCppNames(TCppScope_t scope, std::set<std::string>& cppnames);
 
 // namespace reflection information ------------------------------------------
 RPY_EXPORTED
-std::vector<cppjit::interop::TCppScope_t> GetUsingNamespaces(TCppScope_t);
+std::vector<TCppScope_t> GetUsingNamespaces(TCppScope_t);
 
 // class reflection information ----------------------------------------------
 RPY_EXPORTED
@@ -325,8 +325,7 @@ RPY_EXPORTED
 TCppMethod_t GetMethodTemplate(TCppScope_t scope, const std::string& name,
                                const std::string& proto);
 RPY_EXPORTED
-void GetClassOperators(cppjit::interop::TCppScope_t klass,
-                       const std::string& opname,
+void GetClassOperators(TCppScope_t klass, const std::string& opname,
                        std::vector<TCppMethod_t>& operators);
 RPY_EXPORTED
 TCppMethod_t GetGlobalOperator(TCppScope_t scope, const std::string& lc,

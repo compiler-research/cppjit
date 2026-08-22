@@ -163,7 +163,7 @@ TCppType_t GetType(const std::string& name, bool enable_slow_lookup = false);
 CPPJIT_IMPORT
 bool AppendTypesSlow(const std::string& name,
                      std::vector<Cpp::TemplateArgInfo>& types,
-                     cppjit::interop::TCppScope_t parent = nullptr);
+                     interop::TCppScope_t parent = nullptr);
 CPPJIT_IMPORT
 TCppType_t GetComplexType(const std::string& element_type);
 CPPJIT_IMPORT
@@ -296,7 +296,7 @@ void GetAllCppNames(TCppScope_t scope, std::set<std::string>& cppnames);
 
 // namespace reflection information ------------------------------------------
 CPPJIT_IMPORT
-std::vector<cppjit::interop::TCppScope_t> GetUsingNamespaces(TCppScope_t);
+std::vector<interop::TCppScope_t> GetUsingNamespaces(TCppScope_t);
 
 // class reflection information ----------------------------------------------
 CPPJIT_IMPORT
@@ -387,8 +387,7 @@ CPPJIT_IMPORT
 TCppMethod_t GetMethodTemplate(TCppScope_t scope, const std::string& name,
                                const std::string& proto);
 CPPJIT_IMPORT
-void GetClassOperators(cppjit::interop::TCppScope_t klass,
-                       const std::string& opname,
+void GetClassOperators(interop::TCppScope_t klass, const std::string& opname,
                        std::vector<TCppMethod_t>& operators);
 CPPJIT_IMPORT
 TCppMethod_t GetGlobalOperator(TCppScope_t scope, const std::string& lc,

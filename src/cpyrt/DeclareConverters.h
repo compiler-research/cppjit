@@ -281,7 +281,7 @@ public:
 
 class InstanceRefConverter : public Converter {
 public:
-  InstanceRefConverter(cppjit::interop::TCppScope_t klass, bool isConst)
+  InstanceRefConverter(interop::TCppScope_t klass, bool isConst)
       : fClass(klass), fIsConst(isConst) {}
 
 public:
@@ -291,13 +291,13 @@ public:
   std::string GetFailureMsg() override { return "[InstanceRefConverter]"; };
 
 protected:
-  cppjit::interop::TCppScope_t fClass;
+  interop::TCppScope_t fClass;
   bool fIsConst;
 };
 
 class InstanceMoveConverter : public InstanceRefConverter {
 public:
-  InstanceMoveConverter(cppjit::interop::TCppScope_t klass)
+  InstanceMoveConverter(interop::TCppScope_t klass)
       : InstanceRefConverter(klass, true) {}
   bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) override;
   std::string GetFailureMsg() override { return "[InstanceMoveConverter]"; };
@@ -317,7 +317,7 @@ public:
 
 class InstanceArrayConverter : public InstancePtrConverter<false> {
 public:
-  InstanceArrayConverter(cppjit::interop::TCppScope_t klass, cdims_t dims,
+  InstanceArrayConverter(interop::TCppScope_t klass, cdims_t dims,
                          bool keepControl = false)
       : InstancePtrConverter<false>(klass, keepControl), fShape(dims) {}
   InstanceArrayConverter(const InstanceArrayConverter&) = delete;
@@ -455,8 +455,7 @@ protected:
 // smart pointer converter
 class SmartPtrConverter : public Converter {
 public:
-  SmartPtrConverter(cppjit::interop::TCppScope_t smart,
-                    cppjit::interop::TCppScope_t underlying,
+  SmartPtrConverter(interop::TCppScope_t smart, interop::TCppScope_t underlying,
                     bool keepControl = false, bool isRef = false)
       : fSmartPtrType(smart), fUnderlyingType(underlying),
         fKeepControl(keepControl), fIsRef(isRef) {}
@@ -471,8 +470,8 @@ public:
 protected:
   virtual bool GetAddressSpecialCase(PyObject*, void*&) { return false; }
 
-  cppjit::interop::TCppScope_t fSmartPtrType;
-  cppjit::interop::TCppScope_t fUnderlyingType;
+  interop::TCppScope_t fSmartPtrType;
+  interop::TCppScope_t fUnderlyingType;
   bool fKeepControl;
   bool fIsRef;
 };
@@ -480,7 +479,7 @@ protected:
 // initializer lists
 class InitializerListConverter : public InstanceConverter {
 public:
-  InitializerListConverter(cppjit::interop::TCppScope_t klass,
+  InitializerListConverter(interop::TCppScope_t klass,
                            std::string const& value_type);
   InitializerListConverter(const InitializerListConverter&) = delete;
   InitializerListConverter& operator=(const InitializerListConverter&) = delete;
@@ -498,7 +497,7 @@ protected:
   void* fBuffer = nullptr;
   std::vector<Converter*> fConverters;
   std::string fValueTypeName;
-  cppjit::interop::TCppScope_t fValueType;
+  interop::TCppScope_t fValueType;
   size_t fValueSize;
 };
 

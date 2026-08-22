@@ -24,9 +24,8 @@ template <typename T> inline bool TupleOfInstances_CheckExact(T* object) {
   return object && Py_TYPE(object) == &TupleOfInstances_Type;
 }
 
-PyObject* TupleOfInstances_New(cppjit::interop::TCppObject_t address,
-                               cppjit::interop::TCppScope_t klass,
-                               cdims_t dims);
+PyObject* TupleOfInstances_New(interop::TCppObject_t address,
+                               interop::TCppScope_t klass, cdims_t dims);
 
 } // namespace cppjit::cpyrt
 

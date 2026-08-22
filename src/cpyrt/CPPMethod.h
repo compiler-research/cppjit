@@ -40,8 +40,7 @@ public:
 
 class CPPMethod : public PyCallable {
 public:
-  CPPMethod(cppjit::interop::TCppScope_t scope,
-            cppjit::interop::TCppMethod_t method);
+  CPPMethod(interop::TCppScope_t scope, interop::TCppMethod_t method);
   CPPMethod(const CPPMethod&);
   CPPMethod& operator=(const CPPMethod&);
   virtual ~CPPMethod();
@@ -52,9 +51,9 @@ public:
   PyObject* GetSignatureTypes() override;
   PyObject* GetPrototype(bool show_formalargs = true) override;
   PyObject* GetTypeName() override;
-  PyObject* Reflex(cppjit::interop::Reflex::RequestId_t request,
-                   cppjit::interop::Reflex::FormatId_t =
-                       cppjit::interop::Reflex::OPTIMAL) override;
+  PyObject*
+  Reflex(interop::Reflex::RequestId_t request,
+         interop::Reflex::FormatId_t = interop::Reflex::OPTIMAL) override;
 
   int GetPriority() override;
   bool IsGreedy() override;
@@ -65,7 +64,7 @@ public:
   bool IsConst() override;
 
   PyObject* GetScopeProxy() override;
-  cppjit::interop::TCppFuncAddr_t GetFunctionAddress() override;
+  interop::TCppFuncAddr_t GetFunctionAddress() override;
 
   PyCallable* Clone() override { return new CPPMethod(*this); }
 
@@ -84,8 +83,8 @@ protected:
                          CallContext* ctxt = nullptr);
   PyObject* Execute(void* self, ptrdiff_t offset, CallContext* ctxt = nullptr);
 
-  cppjit::interop::TCppMethod_t GetMethod() { return fMethod; }
-  cppjit::interop::TCppScope_t GetScope() { return fScope; }
+  interop::TCppMethod_t GetMethod() { return fMethod; }
+  interop::TCppScope_t GetScope() { return fScope; }
   Executor* GetExecutor() { return fExecutor; }
   std::string GetSignatureString(bool show_formalargs = true);
   std::string GetReturnTypeName();
@@ -106,8 +105,8 @@ private:
 
 private:
   // representation
-  cppjit::interop::TCppMethod_t fMethod;
-  cppjit::interop::TCppScope_t fScope;
+  interop::TCppMethod_t fMethod;
+  interop::TCppScope_t fScope;
   Executor* fExecutor;
 
   // call dispatch buffers
