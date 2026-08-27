@@ -15,6 +15,8 @@ __all__ = [
     "_backend",
     "_begin_capture_stderr",
     "_end_capture_stderr",
+    "OverloadResolutionException",
+    "OverloadAmbiguityException",
 ]
 
 
@@ -189,6 +191,8 @@ addressof = _backend.addressof
 bind_object = _backend.bind_object
 nullptr = _backend.nullptr
 default = _backend.default
+OverloadResolutionException = _backend.OverloadResolutionException
+OverloadAmbiguityException = _backend.OverloadAmbiguityException
 
 
 def load_reflection_info(name):

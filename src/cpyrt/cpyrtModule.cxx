@@ -91,7 +91,7 @@ static PyNumberMethods nullptr_as_number = {
     0  // nb_inplace_matrix_multiply
 };
 
-static PyTypeObject PyNullPtr_t_Type = {
+PyTypeObject PyNullPtr_t_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0) "nullptr_t", // tp_name
     sizeof(PyObject),                                   // tp_basicsize
     0,                                                  // tp_itemsize
@@ -236,6 +236,8 @@ PyObject* gBusException = nullptr;
 PyObject* gSegvException = nullptr;
 PyObject* gIllException = nullptr;
 PyObject* gAbrtException = nullptr;
+PyObject* gOverloadResolutionException = nullptr;
+PyObject* gOverloadAmbiguityException = nullptr;
 std::unordered_set<interop::TCppScope_t> gPinnedTypes;
 std::ostringstream gCapturedError;
 std::streambuf* gOldErrorBuffer = nullptr;
@@ -1002,6 +1004,15 @@ extern "C" PyObject* PyInit_libcppjit() {
   gAbrtException =
       PyErr_NewException((char*)"cppjit.ll.AbortSignal", cppfatal, nullptr);
   PyModule_AddObject(gThisModule, (char*)"AbortSignal", gAbrtException);
+  gOverloadResolutionException = PyErr_NewException(
+      (char*)"cppjit.OverloadResolutionException", nullptr, nullptr);
+  PyModule_AddObject(gThisModule, (char*)"OverloadResolutionException",
+                     gOverloadResolutionException);
+  gOverloadAmbiguityException =
+      PyErr_NewException((char*)"cppjit.OverloadAmbiguityException",
+                         gOverloadResolutionException, nullptr);
+  PyModule_AddObject(gThisModule, (char*)"OverloadAmbiguityException",
+                     gOverloadAmbiguityException);
 
   // policy labels
   PyModule_AddObject(gThisModule, (char*)"kMemoryHeuristics",
