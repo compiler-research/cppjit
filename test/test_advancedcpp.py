@@ -1098,3 +1098,21 @@ class TestADVANCEDCPP:
         assert isinstance(obj3, ns.Visible3)
         assert obj3.value == 23
         assert obj3.z == 7
+
+
+class TestQUALIFIEDLOOKUP:
+    def test01_qualified_name_in_namespace(self):
+        """A qualified name resolves relative to a namespace"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace QualLookup {
+            namespace Inner { struct Thing { int v = 7; }; }
+            struct Outer { struct Nested { int w = 9; }; };
+        }""")
+
+        ns = cppjit.gbl.QualLookup
+
+        assert getattr(ns, "Inner::Thing")().v == 7
+        assert getattr(ns, "Outer::Nested")().w == 9
