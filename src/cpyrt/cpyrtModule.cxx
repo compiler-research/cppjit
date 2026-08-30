@@ -279,6 +279,7 @@ PyObject* gAbrtException = nullptr;
 std::unordered_set<interop::TCppScope_t> gPinnedTypes;
 std::ostringstream gCapturedError;
 std::streambuf* gOldErrorBuffer = nullptr;
+bool gUseAllocAnalyzer = false;
 
 std::unordered_map<std::string, std::vector<PyObject*>>& pythonizations() {
   static std::unordered_map<std::string, std::vector<PyObject*>> pyzMap;
@@ -1012,6 +1013,20 @@ static PyObject* EndCaptureStderr(PyObject*, PyObject*) {
 
   return Py_BuildValue("s", capturedError.c_str());
 }
+
+//----------------------------------------------------------------------------
+static PyObject* UseAllocAnalyzer(PyObject*, PyObject* args) {
+  // Set allocation-analyzer policy, disabled by default
+  // Usage: enabling ->SetUseAllocAnalyzer(True) / SetUseAllocAnalyzer(1)
+  // disabling ->SetUseAllocAnalyzer(False) / SetUseAllocAnalyzer(0)
+  int enable = 0;
+  if (!PyArg_ParseTuple(args, const_cast<char*>("p"), &enable))
+    return nullptr;
+
+  gUseAllocAnalyzer = enable;
+
+  Py_RETURN_NONE;
+}
 } // unnamed namespace
 
 //- data -----------------------------------------------------------------------
@@ -1061,6 +1076,8 @@ static PyMethodDef gcpyrtMethods[] = {
      METH_NOARGS, (char*)"Begin capturing stderr to a in memory buffer."},
     {(char*)"_end_capture_stderr", (PyCFunction)EndCaptureStderr, METH_NOARGS,
      (char*)"End capturing stderr and returns the captured buffer."},
+    {(char*)"UseAllocAnalyzer", (PyCFunction)UseAllocAnalyzer, METH_VARARGS,
+     (char*)"Enable/disable memory-allocation analyzer."},
     {nullptr, nullptr, 0, nullptr}};
 
 struct module_state {

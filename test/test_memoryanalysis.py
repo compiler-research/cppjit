@@ -76,6 +76,31 @@ class TestMEMORYANALYSIS:
         assert not obj.__python_owns__
         obj.__python_owns__ = True
 
+    def test06_analyzer_on(self):
+        import cppjit
+
+        cppjit.use_alloc_analyzer(True)
+        obj = cppjit.gbl.memory.allocAnalyzerOn()
+        assert obj.__python_owns__
+
+    def test07_analyzer_off(self):
+        import cppjit
+
+        cppjit.use_alloc_analyzer(False)
+        obj = cppjit.gbl.memory.allocAnalyzerOff()
+        assert not (obj.__python_owns__)
+
+    def test08_analyzer_off_but_cache(self):
+        import cppjit
+
+        cppjit.use_alloc_analyzer(True)
+        obj = cppjit.gbl.memory.allocAnalyzerOn()
+        assert obj.__python_owns__
+
+        cppjit.use_alloc_analyzer(False)
+        obj2 = cppjit.gbl.memory.allocAnalyzerOn()
+        assert obj2.__python_owns__
+
 
 @mark.skipif(not IN_CHILD, reason="needs " + FLAGS)
 class TestMEMORYANALYSIS_APINOTES:

@@ -48,6 +48,7 @@ __all__ = [
     "add_library_path",  # add a path to search for libraries
     "add_autoload_map",  # explicitly include an autoload map
     "set_debug",  # enable/disable debug output
+    "use_alloc_analyzer",  # enable/disable memory ownership analyzer
 ]
 
 import ctypes
@@ -395,6 +396,11 @@ def add_autoload_map(fname):
 def set_debug(enable=True):
     """Enable/disable debug output."""
     gbl.Cpp.EnableDebugOutput(enable)
+
+
+def use_alloc_analyzer(enable=True):
+    """Enable/disable memory ownership analyzer"""
+    _backend.UseAllocAnalyzer(enable)
 
 
 def _get_name(tt):

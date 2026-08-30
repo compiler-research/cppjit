@@ -31,6 +31,8 @@ memOwn* allocDefaultMemOwn();
 // No ownership attribute anywhere
 memOwn* noAttrAlloc();
 
+inline memAnalysisKlass* allocAnalyzerOn() { return new memAnalysisKlass; }
+inline memAnalysisKlass* allocAnalyzerOff() { return new memAnalysisKlass; }
 } // namespace memory
 
 #endif // MEMORY_ANALYSIS_H
