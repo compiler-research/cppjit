@@ -358,6 +358,12 @@ std::string GetTypeAsString(TCppType_t type);
 RPY_EXPORTED
 intptr_t GetDatamemberOffset(TCppScope_t var, TCppScope_t klass = nullptr);
 RPY_EXPORTED
+bool IsBitFieldDatamember(TCppScope_t var);
+RPY_EXPORTED
+intptr_t GetDatamemberBitOffset(TCppScope_t var, TCppScope_t klass = nullptr);
+RPY_EXPORTED
+int GetDatamemberBitWidth(TCppScope_t var);
+RPY_EXPORTED
 bool CheckDatamember(TCppScope_t scope, const std::string& name);
 
 // // data member properties

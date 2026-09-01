@@ -1658,6 +1658,21 @@ intptr_t interop::GetDatamemberOffset(TCppScope_t var, TCppScope_t klass) {
   return Cpp::GetVariableOffset(Cpp::GetUnderlyingScope(var), klass);
 }
 
+bool interop::IsBitFieldDatamember(TCppScope_t var) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::IsBitFieldVariable(Cpp::GetUnderlyingScope(var));
+}
+
+intptr_t interop::GetDatamemberBitOffset(TCppScope_t var, TCppScope_t klass) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::GetVariableBitOffset(Cpp::GetUnderlyingScope(var), klass);
+}
+
+int interop::GetDatamemberBitWidth(TCppScope_t var) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::GetVariableBitWidth(Cpp::GetUnderlyingScope(var));
+}
+
 // data member properties ----------------------------------------------------
 bool interop::IsPublicData(TCppScope_t datamem) {
   return Cpp::IsPublicVariable(datamem);

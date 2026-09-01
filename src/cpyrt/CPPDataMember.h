@@ -27,6 +27,10 @@ public: // public, as the python C-API works with C structs
   interop::TCppScope_t fEnclosingScope;
   PyObject* fDescription;
   PyObject* fDoc;
+  // intptr_t, matching fOffset and interop::GetDatamemberBitOffset: an int
+  // would truncate for a member past 256 MiB into its enclosing object.
+  intptr_t fBitOffset; // total bit offset in the object; iff kIsBitField
+  int fBitWidth;       // declared bit width, in [1,64];  iff kIsBitField
 
   // TODO: data members should have a unique identifier, just like methods,
   // so that reflection information can be recovered post-initialization

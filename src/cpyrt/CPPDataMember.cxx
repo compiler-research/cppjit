@@ -16,11 +16,42 @@ using namespace cppjit;
 
 // Standard
 #include <algorithm>
+#include <cstring>
 #include <limits.h>
 #include <structmember.h>
 #include <vector>
 
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+#error "cpyrt bit-field access assumes a little-endian byte order"
+#endif
+
+// Not conditional on the target's pointer width: "unsigned long long x : 64"
+// is legal on a 32-bit target too, so a 9-byte span is reachable everywhere
+// and a 64-bit accumulator is never sufficient.
+#if !defined(__SIZEOF_INT128__)
+#error "cpyrt bit-field access needs unsigned __int128 (a bit-field span can \
+reach 9 bytes); no MSVC/32-bit fallback is implemented"
+#endif
+
 namespace cppjit::cpyrt {
+
+// Byte span a bit-field occupies, derived from (bit offset, bit width) --
+// never from the declared type's width, which would over-read a packed
+// struct's trailing member. Preconditions, enforced in Set(): fBitWidth is
+// in [1,64], so nbytes is in [1,9] and always fits the 16-byte accumulator.
+struct BitFieldSpan {
+  int shift;              // bit position within the first byte, 0..7
+  int nbytes;             // bytes to read/write, 1..9
+  unsigned __int128 mask; // fBitWidth low bits set
+};
+
+static inline BitFieldSpan bitfield_span(intptr_t bit_offset, int bit_width) {
+  BitFieldSpan s;
+  s.shift = (int)(bit_offset % 8);
+  s.nbytes = (s.shift + bit_width + 7) / 8;
+  s.mask = ((unsigned __int128)1 << bit_width) - 1;
+  return s;
+}
 
 enum ETypeDetails {
   kNone = 0x0000,
@@ -29,7 +60,10 @@ enum ETypeDetails {
   kIsArrayType = 0x0004,
   kIsEnumPrep = 0x0008,
   kIsEnumType = 0x0010,
-  kIsCachable = 0x0020
+  kIsCachable = 0x0020,
+  kIsBitField = 0x0040,
+  kIsSignedBitField = 0x0080,
+  kIsBoolBitField = 0x0100
 };
 
 //= cpyrt data member as Python property behavior =========================
@@ -97,6 +131,34 @@ static PyObject* dm_get(CPPDataMember* dm, CPPInstance* pyobj,
   void* address = dm->GetAddress(pyobj);
   if (!address || (intptr_t)address == -1 /* Cling error */)
     return nullptr;
+
+  if (dm->fFlags & kIsBitField) {
+    // Read only the bytes this field actually occupies: never the declared
+    // type's width, which is unknowable from the type name and would
+    // over-read a packed struct's last member.
+    const BitFieldSpan span = bitfield_span(dm->fBitOffset, dm->fBitWidth);
+    unsigned __int128 word = 0;
+    std::memcpy(&word, address, (size_t)span.nbytes);
+
+    const unsigned __int128 extracted = (word >> span.shift) & span.mask;
+
+    if (dm->fFlags & kIsBoolBitField)
+      return PyBool_FromLong((long)(extracted != 0));
+
+    if (dm->fFlags & kIsSignedBitField) {
+      // sign-extend from fBitWidth; fBitWidth > 0 is enforced in Set(), so
+      // this shift amount is never negative.
+      const unsigned __int128 one = 1;
+      const unsigned __int128 sign_bit = one << (dm->fBitWidth - 1);
+      if (extracted & sign_bit) {
+        const long long sval =
+            (long long)(extracted | ~(span.mask)); // fill above with 1s
+        return PyLong_FromLongLong(sval);
+      }
+      return PyLong_FromLongLong((long long)extracted);
+    }
+    return PyLong_FromUnsignedLongLong((unsigned long long)extracted);
+  }
 
   if (dm->fConverter != 0) {
     PyObject* result = dm->fConverter->FromMemory(
@@ -176,6 +238,58 @@ static int dm_set(CPPDataMember* dm, CPPInstance* pyobj, PyObject* value) {
   if (!address || address == -1 /* Cling error */)
     return errret;
 
+  if (dm->fFlags & kIsBitField) {
+    if (dm->fFlags & kIsBoolBitField) {
+      // Mirror cpyrt_PyLong_AsBool in Converters.cxx exactly: a bool
+      // member accepts only a bool or the integers 0 and 1, and a float is
+      // rejected outright even where it would convert. A PyLong_AsLong
+      // failure returns -1, which is neither 0 nor 1, so it falls into the
+      // same ValueError -- deliberately replacing the original TypeError or
+      // OverflowError, so a bit-field reports precisely what a non-bit-field
+      // bool member reports.
+      if (!PyBool_Check(value)) {
+        const long as_long = PyLong_AsLong(value);
+        if (!(as_long == 0 || as_long == 1) || PyFloat_Check(value)) {
+          PyErr_SetString(PyExc_ValueError,
+                          "boolean value should be bool, or integer 1 or 0");
+          return errret;
+        }
+      }
+    }
+
+    // Documented divergence from the non-bit-field path, not an oversight: the
+    // ...Mask conversion truncates out-of-range values silently, so "bf : 4 =
+    // -1" stores 15 and "bf : 4 = 2**100" stores 0, where the same assignment
+    // to a plain "unsigned" member raises ValueError. Truncation of a negative
+    // is ordinary C++ bit-field behaviour and test04 codifies it; the 2**100
+    // case discards an error Python would otherwise report. Kept as-is because
+    // masking is what the stored width means, and range-checking here would
+    // have to pick a signedness the declared type does not settle.
+    //
+    // Clearing first is what makes the failure test below trustworthy: the
+    // sentinel (unsigned long long)-1 is also a legitimate result (that is
+    // exactly what "= -1" masks to), so a stale error set before dm_set was
+    // entered would otherwise turn a valid write into a spurious failure.
+    // Same reasoning as the stale-error handling in CPPScope.cxx.
+    PyErr_Clear();
+    const unsigned long long raw = PyLong_AsUnsignedLongLongMask(value);
+    if (raw == (unsigned long long)-1 && PyErr_Occurred())
+      return errret;
+
+    // fBitWidth is in [1, 64] here -- Set() only sets kIsBitField under that
+    // precondition -- so bitfield_span's shift is always well-defined; no
+    // need to guard against a 128-bit field.
+    const BitFieldSpan span = bitfield_span(dm->fBitOffset, dm->fBitWidth);
+
+    // read-modify-write, so sibling bit-fields sharing these bytes survive
+    unsigned __int128 word = 0;
+    std::memcpy(&word, (void*)address, (size_t)span.nbytes);
+    word &= ~(span.mask << span.shift);
+    word |= ((unsigned __int128)raw & span.mask) << span.shift;
+    std::memcpy((void*)address, &word, (size_t)span.nbytes);
+    return 0;
+  }
+
   // for fixed size arrays
   void* ptr = (void*)address;
   if (dm->fFlags & kIsArrayType)
@@ -205,6 +319,8 @@ static CPPDataMember* dm_new(PyTypeObject* pytype, PyObject*, PyObject*) {
   dm->fEnclosingScope = nullptr;
   dm->fDescription = nullptr;
   dm->fDoc = nullptr;
+  dm->fBitOffset = 0;
+  dm->fBitWidth = 0;
 
   new (&dm->fFullType) std::string{};
 
@@ -325,12 +441,9 @@ void cpyrt::CPPDataMember::Set(interop::TCppScope_t scope,
   }
 
   fEnclosingScope = scope;
-  fOffset = interop::GetDatamemberOffset(
-      fScope, fScope == data
-                  ? scope
-                  : interop::GetScope(
-                        "__cppjit_internal_wrap_g")); // XXX: Check back here //
-                                                      // TODO: make lazy
+  const interop::TCppScope_t offset_parent =
+      fScope == data ? scope : interop::GetScope("__cppjit_internal_wrap_g");
+  fOffset = interop::GetDatamemberOffset(fScope, offset_parent);
   fFlags = interop::IsStaticDatamember(fScope) ? kIsStaticData : 0;
 
   const std::string name = interop::GetFinalName(fScope);
@@ -357,6 +470,67 @@ void cpyrt::CPPDataMember::Set(interop::TCppScope_t scope,
 
     if (interop::IsConstVar(fScope))
       fFlags |= kIsConstData;
+  }
+
+  // Bit-fields need masked access: cache the layout facts once here so the
+  // attribute-access path never has to take the interop lock. A bit-field is
+  // never static, so fOffset is a genuine byte offset.
+  if (!(fFlags & kIsStaticData) && interop::IsBitFieldDatamember(fScope)) {
+    const intptr_t bit_offset =
+        interop::GetDatamemberBitOffset(fScope, offset_parent);
+    const int bit_width = interop::GetDatamemberBitWidth(fScope);
+    // Cap at 64 bits: dm_get's memcpy destination is a 16-byte
+    // unsigned __int128, and nbytes = ceil((shift + bit_width) / 8) with
+    // shift in [0, 7] needs bit_width <= 64 to stay within 9 bytes <= 16.
+    // Gating on width alone (rather than shift + bit_width <= 128) also
+    // rules out an unpacked "unsigned __int128 x : 128" (shift == 0, so
+    // that inequality would pass) whose 64-bit extraction would otherwise
+    // silently truncate. A wider bit-field leaves kIsBitField unset and
+    // falls through to fConverter, whose base Converter::FromMemory has no
+    // override for __int128 and raises a clean TypeError -- the
+    // pre-existing behaviour.
+    //
+    // The fOffset == bit_offset / 8 term is the invariant dm_get's masked
+    // access rests on, checked rather than asserted: it must hold by
+    // construction, since Cpp::GetVariableBitOffset is defined as
+    // GetVariableOffset(var, parent) * 8 + getFieldOffset(FD) % 8, so the
+    // byte offset is baked into the bit offset's high bits for any
+    // non-negative result. But an assert is compiled out of the Release
+    // builds this ships as, and if a future CppInterOp change ever
+    // desynchronises the two the failure mode is a garbage read at a valid
+    // address -- silent wrong data, not a crash. Declining to treat the
+    // member as a bit-field instead falls back to the pre-existing
+    // converter path, which is merely wrong for packed layouts rather than
+    // arbitrary. One compare per descriptor construction, not per access.
+    if (bit_offset >= 0 && bit_width > 0 && bit_width <= 64 &&
+        fOffset == bit_offset / 8) {
+      fFlags |= kIsBitField;
+      fBitOffset = bit_offset;
+      fBitWidth = bit_width;
+
+      // Name-based, unlike everything else here: there is no IsBoolType
+      // query, and IsIntegerType reports bool as an unsigned integer. Exact
+      // match (not a substring search) is deliberate: a substring search
+      // would also fire on a typedef like "bool_flags_t" that merely
+      // contains "bool", turning an integer into True/False. The trade-off
+      // is the opposite direction -- a bit-field declared through a
+      // typedef *of* bool still reads back as 0/1 rather than True/False --
+      // a presentation difference, not a wrong value.
+      //
+      // No equivalent flag exists for char, and that is a real, documented
+      // divergence: a plain "char c" member goes through CharConverter and
+      // reads back as a one-character Python str ('A'), while "char c : 5"
+      // takes the masked path here and reads back an int (-3 for the bits
+      // 0b11101). signed char and unsigned char bit-fields diverge the same
+      // way -- int rather than str, unsigned char merely not sign-extending.
+      // Only bool was given parity; char keeps the integer presentation.
+      if (fFullType == "bool")
+        fFlags |= kIsBoolBitField;
+
+      bool is_signed = false;
+      if (interop::IsIntegerType(type, &is_signed) && is_signed)
+        fFlags |= kIsSignedBitField;
+    }
   }
 
   auto ldims = interop::GetDimensions(type);
