@@ -171,8 +171,28 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
       }
 
       // ... or be a regular method with an object proxy return value
-      else if (cppres)
+      else if (cppres) {
         cppres->PythonOwns();
+        // After giving ownership, set proper flags to indicate allocation
+        // method/func
+        switch (AT) {
+        case interop::AllocType::Malloc:
+          cppres->fFlags |= CPPInstance::kIsMalloc;
+          break;
+        case interop::AllocType::NewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          break;
+        case interop::AllocType::OperatorNew:
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        case interop::AllocType::OperatorNewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        default:
+          break;
+        }
+      }
     }
 
     // if this new object falls inside self, make sure its lifetime is proper

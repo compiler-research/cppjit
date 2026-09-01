@@ -115,4 +115,12 @@ IS_CPP23 = (
                                             #endif\n""")
     == 1
 )
+IS_CLANG_LT_22 = (
+    cppjit.evaluate("""#if __clang_major__ < 22
+                                            true
+                                            #else
+                                            false
+                                            #endif\n""")
+    == 1
+)
 IS_VALGRIND = True if os.getenv("IS_VALGRIND") else False

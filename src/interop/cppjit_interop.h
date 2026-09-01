@@ -133,7 +133,7 @@ void Deallocate(TCppScope_t scope, TCppObject_t instance);
 RPY_EXPORTED
 TCppObject_t Construct(TCppScope_t scope, void* arena = nullptr);
 RPY_EXPORTED
-void Destruct(TCppScope_t scope, TCppObject_t instance);
+void Destruct(TCppScope_t scope, TCppObject_t instance, size_t count = 0);
 
 // method/function dispatching -----------------------------------------------
 RPY_EXPORTED

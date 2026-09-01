@@ -817,10 +817,11 @@ interop::TCppObject_t interop::Construct(TCppScope_t scope,
   return Cpp::Construct(scope, arena, /*count=*/1);
 }
 
-void interop::Destruct(TCppScope_t scope, TCppObject_t instance) {
+void interop::Destruct(TCppScope_t scope, TCppObject_t instance,
+                       size_t count /*=0*/) {
   std::lock_guard<std::recursive_mutex> Lock(
       InterOpMutex); // TODO: this shouldn't locks the JIT call
-  Cpp::Destruct(instance, scope, true, /*count=*/0);
+  Cpp::Destruct(instance, scope, true, count);
 }
 
 static inline bool copy_args(Parameter* args, size_t nargs, void** vargs) {

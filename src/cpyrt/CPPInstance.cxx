@@ -16,6 +16,7 @@ using namespace cppjit;
 
 // Standard
 #include <algorithm>
+#include <cstdlib>
 #include <sstream>
 
 //- data _____________________________________________________________________
@@ -226,7 +227,17 @@ void cpyrt::op_dealloc_nofree(CPPInstance* pyobj) {
     if (pyobj->fFlags & CPPInstance::kIsValue) {
       interop::CallDestructor(klass, cppobj);
       interop::Deallocate(klass, cppobj);
-    } else
+    } else if (pyobj->fFlags & CPPInstance::kIsMalloc)
+      std::free(cppobj);
+    else if (pyobj->fFlags & CPPInstance::kIsNoConstruct) {
+      if (pyobj->fFlags & CPPInstance::kIsArrayAlloc)
+        ::operator delete[](cppobj);
+      else
+        ::operator delete(cppobj);
+    } else if (pyobj->fFlags & CPPInstance::kIsArrayAlloc)
+      interop::Destruct(klass, cppobj, 1);
+    // Default case: just kIsOwner set in all of memory-ownership flags
+    else
       interop::Destruct(klass, cppobj);
   }
   cppobj = nullptr;
@@ -954,10 +965,30 @@ static int op_setownership(CPPInstance* pyobj, PyObject* value, void*) {
   return 0;
 }
 
+// Added for testing purposes
+//-----------------------------------------------------------------------------
+static PyObject* op_get_array_alloc(CPPInstance* pyobj, void*) {
+  return PyBool_FromLong((long)(pyobj->fFlags & CPPInstance::kIsArrayAlloc));
+}
+//-----------------------------------------------------------------------------
+static PyObject* op_get_no_construct(CPPInstance* pyobj, void*) {
+  return PyBool_FromLong((long)(pyobj->fFlags & CPPInstance::kIsNoConstruct));
+}
+//-----------------------------------------------------------------------------
+static PyObject* op_get_malloc(CPPInstance* pyobj, void*) {
+  return PyBool_FromLong((long)(pyobj->fFlags & CPPInstance::kIsMalloc));
+}
 //-----------------------------------------------------------------------------
 static PyGetSetDef op_getset[] = {
     {(char*)"__python_owns__", (getter)op_getownership, (setter)op_setownership,
      (char*)"If true, python manages the life time of this object", nullptr},
+    {(char*)"__is_array_alloc__", (getter)op_get_array_alloc, nullptr,
+     (char*)"If true, the object was allocated with new[]/operator new[]",
+     nullptr},
+    {(char*)"__is_no_construct__", (getter)op_get_no_construct, nullptr,
+     (char*)"If true, the memory is raw: no constructor was run", nullptr},
+    {(char*)"__is_malloc__", (getter)op_get_malloc, nullptr,
+     (char*)"If true, the object was allocated with malloc", nullptr},
     {(char*)nullptr, nullptr, nullptr, nullptr, nullptr}};
 
 //= cpyrt type number stubs to allow dynamic overrides =====================
