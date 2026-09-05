@@ -6,19 +6,45 @@ build-backend = "scikit_build_core.build"
 name = "cppjit"
 dynamic = ["version"]
 description = "CppJIT: fast and automatic Python-C++ interoperability"
+readme = "README.md"
 license = "BSD-3-Clause-LBNL"
 requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Interpreters",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 authors = [
-    {name = "Aaron Jomy"},
-    {name = "Baidyanath Kundu"},
-    {name = "Jonas Rembser"},
+    {name = "Wim Lavrijsen"},
     {name = "Vassil Vassilev"},
+    {name = "Aaron Jomy"},
     {name = "Vipul Cariappa"},
-    {name = "Wim Lavrijsen"}
+    {name = "Jonas Rembser"},
+    {name = "Baidyanath Kundu"}
 ]
 maintainers = [
-    {name = "Aaron Jomy", email = "aaronjomyjoseph@gmail.com"}
+    {name = "Aaron Jomy", email = "aaronjomyjoseph@gmail.com"},
+    {name = "Jonas Rembser", email = "jonas.rembser@cern.ch"},
+    {name = "Vassil Vassilev", email = "v.g.vassilev@gmail.com"},
+    {name = "Vipul Cariappa", email = "vipulcariappa@gmail.com"}
 ]
+
+[project.urls]
+Homepage = "https://github.com/compiler-research/cppjit"
+Issues = "https://github.com/compiler-research/cppjit/issues"
+Changelog = "https://github.com/compiler-research/cppjit/releases"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
