@@ -3,7 +3,8 @@
 [![CI](https://github.com/compiler-research/cppjit/actions/workflows/ci.yml/badge.svg)](https://github.com/compiler-research/cppjit/actions/workflows/ci.yml)
 [![Nightlies](https://github.com/compiler-research/cppjit/actions/workflows/nightly.yml/badge.svg)](https://github.com/compiler-research/cppjit/actions/workflows/nightly.yml)
 [![Wheels](https://github.com/compiler-research/cppjit/actions/workflows/wheels.yml/badge.svg)](https://github.com/compiler-research/cppjit/actions/workflows/wheels.yml)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://github.com/compiler-research/cppjit)
+[![PyPI](https://img.shields.io/pypi/v/cppjit)](https://pypi.org/project/cppjit/)
+[![Python](https://img.shields.io/pypi/pyversions/cppjit)](https://pypi.org/project/cppjit/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause--LBNL-green)](https://spdx.org/licenses/BSD-3-Clause-LBNL.html)
 
 cppjit embeds an interactive C++ JIT compiler in Python: write or import
