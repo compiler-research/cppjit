@@ -31,6 +31,7 @@ using namespace cppjit;
 #include <string.h>
 #include <string_view>
 #include <utility>
+#include <vector>
 #if __cplusplus >= 202002L
 #include <span>
 #endif
@@ -2819,6 +2820,24 @@ static std::unordered_map<PyObject*, std::pair<void*, RetSigKey_t>>
     sWrapperWeakRefs;
 static std::unordered_map<void*, PyObject**> sWrapperReference;
 
+static void GetSignatureFromFnType(interop::TCppType_t fn_type,
+                                   std::string& ret, std::string& sig) {
+  std::vector<interop::TCppType_t> types;
+  interop::GetFnTypeSig(fn_type, types);
+  assert(types.size() >= 1);
+  ret = interop::GetTypeAsString(types[0]);
+  sig = "(";
+  bool f = false;
+  for (size_t i = 1; i < types.size(); i++) {
+    if (f)
+      sig += ", ";
+    else
+      f = true;
+    sig += interop::GetTypeAsString(types[i]);
+  }
+  sig += ")";
+}
+
 static PyObject* WrapperCacheEraser(PyObject*, PyObject* pyref) {
   auto ipos = sWrapperWeakRefs.find(pyref);
   if (ipos != sWrapperWeakRefs.end()) {
@@ -2845,20 +2864,13 @@ static PyMethodDef gWrapperCacheEraserMethodDef = {
     (PyCFunction)WrapperCacheEraser, METH_O, nullptr};
 
 static void* PyFunction_AsCPointer(PyObject* pyobject,
-                                   const std::string& rettype,
-                                   const std::string& signature,
+                                   const interop::TCppType_t fn_type,
                                    bool allowCppInstance) {
   // Convert a bound C++ function pointer or callable python object to a C-style
   // function pointer. The former is direct, the latter involves a JIT-ed
   // wrapper.
   static PyObject* sWrapperCacheEraser =
       PyCFunction_New(&gWrapperCacheEraserMethodDef, nullptr);
-
-  // FIXME: avoid string comparisons and parsing
-  std::string true_signature = signature;
-
-  if (true_signature.rfind("(void)") != std::string::npos)
-    true_signature = true_signature.substr(0, true_signature.size() - 6) + "()";
 
   using namespace cppjit::cpyrt;
 
@@ -2869,18 +2881,12 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
 
     // find the overload with matching signature
     for (auto& m : ol->fMethodInfo->fMethods) {
-      PyObject* sig = m->GetSignature(false);
-      bool found = true_signature == PyUnicode_AsUTF8(sig);
-      Py_DECREF(sig);
-      if (found) {
+      if (m->IsSimilarFnType(fn_type)) {
         void* fptr = (void*)m->GetFunctionAddress();
         if (fptr)
           return fptr;
-        break; // fall-through, with calling through Python
       }
     }
-    // FIXME: maybe we should try BestOverloadFunctionMatch before failing
-    // FIXME: Should we fall-through, with calling through Python
     return nullptr;
   }
 
@@ -2891,14 +2897,15 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
     if (pytmpl->fTemplateArgs)
       fullname += PyUnicode_AsUTF8(pytmpl->fTemplateArgs);
     interop::TCppScope_t scope = ((CPPClass*)pytmpl->fTI->fPyClass)->fCppType;
-    interop::TCppMethod_t cppmeth =
-        interop::GetMethodTemplate(scope, fullname, true_signature);
+    std::string ret{}, sig{};
+    GetSignatureFromFnType(fn_type, ret, sig);
+    interop::TCppMethod_t cppmeth = interop::GetMethodTemplate(
+        scope, fullname, sig.substr(1, sig.size() - 2));
     if (cppmeth) {
       void* fptr = (void*)interop::GetFunctionAddress(cppmeth, false);
       if (fptr)
         return fptr;
     }
-    // FIXME: Should we fall-through, with calling through Python
     return nullptr;
   }
 
@@ -2916,8 +2923,12 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
     // function pointers, but only to std::function.
     void* wpraddress = nullptr;
 
+    std::string ret{}, sig{};
+    GetSignatureFromFnType(fn_type, ret, sig);
+    sig = "(void)" == sig ? "()" : sig;
+
     // re-use existing wrapper if possible
-    auto key = rettype + true_signature;
+    auto key = ret + sig;
     const auto& lookup = sWrapperLookup.find(key);
     if (lookup != sWrapperLookup.end()) {
       const auto& existing = lookup->second.find(pyobject);
@@ -2949,7 +2960,7 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
 
       // extract argument types
       const std::vector<std::string>& argtypes =
-          TypeManip::extract_arg_types(true_signature);
+          TypeManip::extract_arg_types(sig);
       int nArgs = (int)argtypes.size();
 
       // wrapper name
@@ -2958,8 +2969,8 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
 
       // build wrapper function code
       std::ostringstream code;
-      code << "namespace __cppjit_internal {\n  " << rettype << " "
-           << wname.str() << "(";
+      code << "namespace __cppjit_internal {\n  " << ret << " " << wname.str()
+           << "(";
       for (int i = 0; i < nArgs; ++i) {
         code << argtypes[i] << " arg" << i;
         if (i != nArgs - 1)
@@ -2969,7 +2980,7 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
            << "    cppjit::cpyrt::PythonGILRAII python_gil_raii;\n";
 
       // start function body
-      Utility::ConstructCallbackPreamble(rettype, argtypes, code);
+      Utility::ConstructCallbackPreamble(ret, argtypes, code);
 
       // create a referenceable pointer
       PyObject** ref = new PyObject* {pyobject};
@@ -2986,7 +2997,7 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
               "deleted\");\n";
 
       // close
-      Utility::ConstructCallbackReturn(rettype, nArgs, code);
+      Utility::ConstructCallbackReturn(ret, nArgs, code);
 
       // end of namespace
       code << "}";
@@ -3029,8 +3040,7 @@ bool cpyrt::FunctionPointerConverter::SetArg(PyObject* pyobject,
   }
 
   // normal case, get a function pointer
-  void* fptr =
-      PyFunction_AsCPointer(pyobject, fRetType, fSignature, fAllowCppInstance);
+  void* fptr = PyFunction_AsCPointer(pyobject, fFnType, fAllowCppInstance);
   if (fptr) {
     SetLifeLine(ctxt->fPyContext, pyobject, (intptr_t)this);
     para.fValue.fVoidp = fptr;
@@ -3046,8 +3056,11 @@ PyObject* cpyrt::FunctionPointerConverter::FromMemory(void* address) {
   // and it's not possible to get the latter from the former: the backend will
   // need to support both. Since that is far in the future, we'll use a
   // std::function instead.
-  if (address)
-    return Utility::FuncPtr2StdFunction(fRetType, fSignature, *(void**)address);
+  if (address) {
+    std::string ret{}, sig{};
+    GetSignatureFromFnType(fFnType, ret, sig);
+    return Utility::FuncPtr2StdFunction(ret, sig, *(void**)address);
+  }
   PyErr_SetString(PyExc_TypeError, "can not convert null function pointer");
   return nullptr;
 }
@@ -3061,8 +3074,7 @@ bool cpyrt::FunctionPointerConverter::ToMemory(PyObject* pyobject,
   }
 
   // normal case, get a function pointer
-  void* fptr =
-      PyFunction_AsCPointer(pyobject, fRetType, fSignature, fAllowCppInstance);
+  void* fptr = PyFunction_AsCPointer(pyobject, fFnType, fAllowCppInstance);
   if (fptr) {
     SetLifeLine(ctxt, pyobject, (intptr_t)address);
     *((void**)address) = fptr;
@@ -3603,7 +3615,7 @@ cppjit::cpyrt::CreateConverter(const std::string& fullType, cdims_t dims) {
           sz1 -= 1;
 
         return new StdFunctionConverter(
-            cnv, resolvedType.substr(pos + 14, sz1),
+            cnv, interop::GetType(fullType), resolvedType.substr(pos + 14, sz1),
             resolvedType.substr(pos1, pos2 - pos1 + 1));
       } else if (cnv->HasState())
         delete cnv;
@@ -3650,10 +3662,9 @@ cppjit::cpyrt::CreateConverter(const std::string& fullType, cdims_t dims) {
         // -- Cling WORKAROUND
         result = selectInstanceCnv(klass, cpd, dims, isConst, control);
     }
-  } else if (std::string fnRet, fnSig;
-             interop::GetFnTypeSigAsString(type, fnRet, fnSig)) {
-    // this is a function pointer
-    result = new FunctionPointerConverter(fnRet, fnSig);
+  } else if (interop::IsFunctionType(type)) {
+    // this is a function pointer or reference
+    result = new FunctionPointerConverter(type);
   }
   const std::string failure_msg("Failed to convert type: " + fullType +
                                 "; resolved: " + resolvedType +
@@ -3857,7 +3868,7 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
 
         const std::string& argsStr =
             resolvedTypeStr.substr(pos1, pos2 - pos1 + 1).c_str();
-        return new StdFunctionConverter(cnv,
+        return new StdFunctionConverter(cnv, resolvedType,
                                         resolvedTypeStr.substr(pos + 14, sz1),
                                         argsStr == "(void)" ? "()" : argsStr);
       } else if (cnv->HasState())
@@ -3885,10 +3896,9 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
   // converters for known C++ classes and default (void*)
   Converter* result = nullptr;
   interop::TCppScope_t klass = interop::GetScopeFromType(realType);
-  if (std::string fnRet, fnSig;
-      interop::GetFnTypeSigAsString(resolvedType, fnRet, fnSig)) {
-    // this is a function pointer
-    result = new FunctionPointerConverter(fnRet, fnSig);
+  if (interop::IsFunctionType(resolvedType)) {
+    // this is a function function pointer or reference
+    result = new FunctionPointerConverter(resolvedType);
   } else if ((realTypeStr != "std::byte") &&
              (klass || (klass = interop::GetFullScope(realTypeStr)))) {
     // std::byte is a special enum class used to access raw memory
