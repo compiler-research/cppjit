@@ -131,8 +131,8 @@ static bool loadDispatchAPI(const InterOpPaths& Paths) {
   return true;
 }
 
-// CppInterOp itself appends CPPINTEROP_EXTRA_INTERPRETER_ARGS inside
-// CreateInterpreter, so nothing needs to be forwarded from here.
+// CppInterOp appends the CPPINTEROP_EXTRA_INTERPRETER_ARGS environment
+// variable itself, so only build-time arguments are forwarded from here.
 static interop::TInterp_t
 acquireOrCreateInterpreter(const InterOpPaths& Paths) {
   if (auto existingInterp = Cpp::GetInterpreter())
@@ -154,6 +154,16 @@ acquireOrCreateInterpreter(const InterOpPaths& Paths) {
     args.push_back("-resource-dir");
     args.push_back(resourceDir.c_str());
   }
+#ifdef CPPJIT_EXTRA_INTERPRETER_ARGS
+  // Space-split like CppInterOp's CPPINTEROP_EXTRA_INTERPRETER_ARGS, which
+  // CreateInterpreter appends after these.
+  std::vector<std::string> bakedArgs;
+  std::istringstream bakedStream(CPPJIT_EXTRA_INTERPRETER_ARGS);
+  for (std::string arg; bakedStream >> arg;)
+    bakedArgs.push_back(arg);
+  for (const std::string& arg : bakedArgs)
+    args.push_back(arg.c_str());
+#endif
   return Cpp::CreateInterpreter(args, /*GpuArgs=*/{});
 }
 
@@ -246,7 +256,10 @@ extern "C" int LoadCppInterOp() {
     if (!loadDispatchAPI(Paths))
       return;
 
-    acquireOrCreateInterpreter(Paths);
+    if (!acquireOrCreateInterpreter(Paths)) {
+      std::cerr << "[cppjit] Failed to create interpreter" << std::endl;
+      return;
+    }
     configureInterpreter(Paths);
     preloadHeaders();
     defineRuntimeHelpers();

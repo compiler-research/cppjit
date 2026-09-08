@@ -14,6 +14,8 @@ set(CPPINTEROP_GIT_REPOSITORY "https://github.com/compiler-research/CppInterOp.g
 set(CPPINTEROP_GIT_TAG "9802d61921ad5688ae42e4e628d754fc1192244d" CACHE STRING "")
 set(CPPINTEROP_SOURCE_DIR "" CACHE PATH
     "Override default CppInterOp built by ExternalProject_Add, with a path to local CppInterOp source")
+set(CPPJIT_EXTRA_INTERPRETER_ARGS "" CACHE STRING
+    "Space-separated arguments passed at interpreter creation")
 
 # The full Development component requires libpython, which manylinux
 # images do not ship and extension modules do not need.
@@ -77,6 +79,20 @@ target_compile_definitions(cppjit PRIVATE
     CPPJIT_CLANG_MAJOR="${CPPJIT_INTEROP_CLANG_MAJOR}"
     CPPJIT_CLANG_INCLUDE_DIR="${CPPJIT_INTEROP_CLANG_DIR}"
 )
+
+# The value lands in a string literal, so backslashes and quotes must survive
+# the preprocessor; a ";" cannot be carried through CMake at all.
+if(CPPJIT_EXTRA_INTERPRETER_ARGS)
+    if("${CPPJIT_EXTRA_INTERPRETER_ARGS}" MATCHES ";")
+        message(FATAL_ERROR
+            "CPPJIT_EXTRA_INTERPRETER_ARGS must not contain ';', CMake's list separator")
+    endif()
+    string(REPLACE "\\" "\\\\" _cppjit_extra_args "${CPPJIT_EXTRA_INTERPRETER_ARGS}")
+    string(REPLACE "\"" "\\\"" _cppjit_extra_args "${_cppjit_extra_args}")
+    target_compile_definitions(cppjit PRIVATE
+        CPPJIT_EXTRA_INTERPRETER_ARGS="${_cppjit_extra_args}"
+    )
+endif()
 
 target_include_directories(cppjit PRIVATE
     # src/ itself resolves the public "cpyrt/*.h" spellings against the
