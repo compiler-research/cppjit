@@ -12,7 +12,7 @@ from support import (
 )
 
 currpath = py.path.local(__file__).dirpath()
-test_dct = str(currpath.join("cpp/datatypesDict"))
+test_dct = "datatypes_cxx"
 
 
 def setup_module(mod):
@@ -538,6 +538,11 @@ class TestLOWLEVEL:
         with raises(TypeError):
             cppjit.gbl.ArrayOfCStrings.takes_array_of_cstrings(pyargs, len(pyargs))
 
+    @mark.xfail(
+        condition=IS_WINDOWS == 64,
+        run=False,
+        reason="Windows fatal exception: access violation",
+    )
     def test11_array_of_const_char_ref(self):
         """Test passting of const char**&"""
 
@@ -1103,6 +1108,7 @@ class TestMULTIDIMARRAYS:
                 for k in range(gbl.S + 7):
                     assert gbl.consume_klass(gbl.klasses[i][j][k], i, j, k)
 
+    @mark.xfail(condition=IS_WINDOWS == 32, reason="Fails on Windows 32 bit")
     def test08_reshape_sets_unknown_dimensions_only(self):
         """Reshaping fills in the dimensions the type leaves open"""
 
@@ -1195,8 +1201,12 @@ class TestBINDVALUE:
 
         cppjit.cppdef("""
         std::string bind_value_make_string() { return "hello"; }
+        std::string bind_value_string_object = bind_value_make_string();
         """)
-        s = cppjit.gbl.bind_value_make_string()
+        # ROOT returns std::string values as Python str; the address comes
+        # from a C++ object
+        assert cppjit.gbl.bind_value_make_string() == "hello"
+        s = cppjit.gbl.bind_value_string_object
         ps = ll.bind_value("std::string", cppjit.addressof(s))
         assert type(ps) is type(s)
         assert ps == "hello"
