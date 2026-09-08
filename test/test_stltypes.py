@@ -422,6 +422,22 @@ class TestSTLVECTOR:
         v += []
         assert len(v) == sz
 
+    def test05a_iadd_returns_self_and_array_gate(self):
+        """+= returns the same vector; __array__ only exists for non-class types"""
+
+        import cppjit
+
+        v = cppjit.gbl.std.vector(int)([1, 2])
+        w = v
+        v += [3, 4]
+        assert v is w
+        assert list(v) == [1, 2, 3, 4]
+
+        cppjit.cppdef("struct VecElemGate { int x; };")
+        cv = cppjit.gbl.std.vector["VecElemGate"]()
+        assert hasattr(v, "__array__")
+        assert not hasattr(cv, "__array__")
+
     def test06_vector_indexing(self):
         """Test python-style indexing to an std::vector<int>"""
 
