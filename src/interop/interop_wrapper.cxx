@@ -1268,6 +1268,16 @@ bool interop::GetSmartPtrInfo(TCppScope_t klass, TCppScope_t* raw,
                      /*kind=*/Cpp::OperatorArity::kBoth);
     if (ops.size() != 1)
       return false;
+
+    // The dereference operator can be a member template: MSVC's
+    // std::shared_ptr::operator-> is SFINAE-constrained on the element
+    // type not being an array. Its return type is dependent, so it has
+    // to be instantiated (it takes no arguments) before the pointee
+    // type can be determined - and before it can be called.
+    if (Cpp::IsTemplatedFunction(ops[0]))
+      ops[0] = Cpp::BestOverloadFunctionMatch(ops, {}, {});
+    if (!ops[0])
+      return false;
   }
 
   if (deref)
