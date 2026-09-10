@@ -1,9 +1,10 @@
+import os
 import shutil
 import tempfile
 
 import py
-from pytest import raises
-from support import needs_dictionary, setup_make
+from pytest import mark, raises
+from support import IS_LINUX, needs_dictionary, setup_make
 
 # reuse the example01
 currpath = py.path.local(__file__).dirpath()
@@ -58,6 +59,24 @@ class TestBASICAPI:
             # then copy to our rpath, and make sure it can be loaded now
             shutil.copyfile(test_dct + ".so", tpath + "/test.so")
             cppjit.load_library("test.so")
+
+    @mark.skipif(IS_LINUX == 0, reason="checks Linux dlerror text")
+    def test03a_load_library_failure_reason(self):
+        """load_library reports the loader's failure reason"""
+
+        import cppjit
+
+        with tempfile.TemporaryDirectory() as tpath:
+            missing = os.path.join(tpath, "libdlerrmissing.so")
+            with raises(RuntimeError, match="libdlerrmissing.*library not found"):
+                cppjit.load_library(missing)
+
+            # a truncated ELF header: found on disk, rejected before dlopen
+            invalid = os.path.join(tpath, "libdlerrinvalid.so")
+            with open(invalid, "wb") as out:
+                out.write(b"\x7fELF" + b"\0" * 12)
+            with raises(RuntimeError, match="libdlerrinvalid"):
+                cppjit.load_library(invalid)
 
     def test04_add_include_path(self):
         import cppjit

@@ -278,10 +278,10 @@ def macro(cppm):
 
 def load_library(name):
     """Explicitly load a shared library."""
-    with _stderr_capture() as err:
-        result = gbl.Cpp.LoadLibrary(name, True)
+    reason = gbl.std.string()
+    result = gbl.Cpp.LoadLibrary(name, True, reason)
     if result == False:  # noqa: E712
-        raise RuntimeError('Could not load library "%s": %s' % (name, err.err))
+        raise RuntimeError('Could not load library "%s": %s' % (name, reason))
 
     return True
 
