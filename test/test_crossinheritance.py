@@ -3,7 +3,6 @@ import os
 import py
 from pytest import mark, raises, skip
 from support import (
-    IS_CLANG_DEBUG,
     IS_CLING,
     IS_LINUX_ARM,
     IS_MAC,
@@ -27,10 +26,6 @@ class TestCROSSINHERITANCE:
 
         cls.example01 = cppjit.load_reflection_info(cls.test_dct)
 
-    @mark.xfail(
-        run=not (IS_CLANG_DEBUG or IS_CLING),
-        reason="Crashes with ClangRepl with 'toString not implemented' and on Cling",
-    )
     def test01_override_function(self):
         """Test ability to override a simple function"""
 

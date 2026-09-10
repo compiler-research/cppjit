@@ -5,6 +5,7 @@ using namespace cppjit;
 #include "CPPInstance.h"
 #include "CPPOverload.h"
 #include "CPPScope.h"
+#include "Compatibility.h"
 #include "MemoryRegulator.h"
 #include "ProxyWrappers.h"
 #include "PyStrings.h"
@@ -841,7 +842,7 @@ static PyObject* op_str(CPPInstance* self) {
         // otherwise not found
         // TODO: ToString() still leaks ...
         const std::string& pretty =
-            interop::ToString(self->ObjectIsA(), self->GetObject());
+            compat::ObjToString(self->ObjectIsA(), self->GetObject());
         if (!pretty.empty())
           return cpyrt_PyText_FromString(pretty.c_str());
         continue;
@@ -870,22 +871,7 @@ static PyObject* op_str(CPPInstance* self) {
   // 2. Cling's pretty printing (not done through backend for performance
   // reasons)
   if (!ScopeFlagCheck(self, CPPScope::kNoPrettyPrint)) {
-    static PyObject* printValue = nullptr;
-    if (!printValue) {
-      PyObject* gbl =
-          PyDict_GetItemString(PySys_GetObject((char*)"modules"), "cppjit.gbl");
-      PyObject* cl = PyObject_GetAttrString(gbl, (char*)"cling");
-      printValue = PyObject_GetAttrString(cl, (char*)"printValue");
-      Py_DECREF(cl);
-      // gbl is borrowed
-      if (printValue) {
-        Py_DECREF(printValue); // make borrowed
-        if (!PyCallable_Check(printValue))
-          printValue = nullptr; // unusable ...
-      }
-      if (!printValue) // unlikely
-        ScopeFlagSet(self, CPPScope::kNoPrettyPrint);
-    }
+    PyObject* printValue = compat::GetClingPrintValue();
 
     if (printValue) {
       // as printValue only works well for templates taking pointer arguments,

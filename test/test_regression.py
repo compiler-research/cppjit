@@ -1040,10 +1040,6 @@ class TestREGRESSION:
             cppjit.gbl.std.get[0](cppjit.gbl.property_types.run_as[pt_type]()) == 20.0
         )
 
-    @mark.xfail(
-        run=False,
-        reason="Crashes on ClangRepl with 'toString not implemented', and on Cling",
-    )
     def test34_print_empty_collection(self):
         """Print empty collection through Cling"""
 
@@ -1648,3 +1644,17 @@ class TestREGRESSION:
 
         with raises(TypeError):
             cppjit.gbl.std.vector[object()]
+
+    def test53_str_fallback_without_ostream_insertion(self):
+        """str() of an instance with no operator<< used to crash"""
+
+        import cppjit
+
+        cppjit.cppdef("namespace StrFallback { struct Bare { int x; }; }")
+
+        bare = cppjit.gbl.StrFallback.Bare()
+
+        # no ostream inserter and no usable pretty printer, so op_str must
+        # degrade to the generic repr
+        assert str(bare) == repr(bare)
+        assert "Bare object at" in str(bare)
