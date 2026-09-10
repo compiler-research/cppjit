@@ -1,6 +1,7 @@
 import py
 from pytest import mark, raises
 from support import (
+    HAS_NAMED_TEMPLATE_ARGS,
     IS_CLANG_REPL,
     IS_CLING,
     IS_LINUX_ARM,
@@ -83,6 +84,57 @@ class TestTEMPLATES:
 
         assert cppjit.gbl.nt_templ_args[1]() == 1
         assert cppjit.gbl.nt_templ_args[256]() == 256
+
+        # negative literals are values, not types
+        assert cppjit.gbl.nt_templ_args[-1]() == -1
+        assert cppjit.gbl.nt_templ_args[-256]() == -256
+
+        # true/false are identifier-shaped value literals
+        cppjit.cppdef("template<bool b> bool nt_templ_bool() { return b; };")
+        assert cppjit.gbl.nt_templ_bool["true"]() is True
+        assert cppjit.gbl.nt_templ_bool["false"]() is False
+
+    @mark.skipif(
+        not HAS_NAMED_TEMPLATE_ARGS,
+        reason="needs a CppInterOp that resolves named template arguments",
+    )
+    def test02a_named_template_args(self):
+        """Use of template names and named constants as template arguments"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        template <typename T> struct NtPlain {};
+        constexpr int kNtThree = 3;
+        enum NtEnum { kNtFour = 4 };
+        namespace ntarg {
+            template <typename T> using Alias = NtPlain<T>;
+            namespace inner { template <typename T> struct Nested {}; }
+            template <template <typename> typename TT> struct TakesTmpl {};
+            template <int N> struct TakesInt {};
+            constexpr int kFive = 5;
+        }""")
+
+        gbl = cppjit.gbl
+
+        # a template name, unqualified and qualified, plus an alias template
+        assert (
+            gbl.ntarg.TakesTmpl["NtPlain"].__cpp_name__ == "ntarg::TakesTmpl<NtPlain>"
+        )
+        assert (
+            gbl.ntarg.TakesTmpl["ntarg::Alias"].__cpp_name__
+            == "ntarg::TakesTmpl<ntarg::Alias>"
+        )
+        assert (
+            gbl.ntarg.TakesTmpl["ntarg::inner::Nested"].__cpp_name__
+            == "ntarg::TakesTmpl<ntarg::inner::Nested>"
+        )
+
+        # a named constant is an expression, not an integer literal: unqualified
+        # and qualified constexpr variables, and an enum constant
+        assert gbl.ntarg.TakesInt["kNtThree"].__cpp_name__ == "ntarg::TakesInt<3>"
+        assert gbl.ntarg.TakesInt["ntarg::kFive"].__cpp_name__ == "ntarg::TakesInt<5>"
+        assert gbl.ntarg.TakesInt["kNtFour"].__cpp_name__ == "ntarg::TakesInt<4>"
 
     def test03_templated_function(self):
         """Templated global and static functions lookup and calls"""
