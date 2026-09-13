@@ -45,7 +45,7 @@ def setup_make(targetname, optional=False):
         if fcntl is not None:
             fcntl.flock(lockf, fcntl.LOCK_EX)
         popen = subprocess.Popen(
-            ["make", targetname + "Dict.so"],
+            ["make", targetname + "Dict" + soext],
             cwd=str(currpath),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -75,6 +75,8 @@ if "win32" in sys.platform:
         maxvalue = 2**31 - 1
     else:
         IS_WINDOWS = 32
+
+soext = ".dll" if IS_WINDOWS else ".so"
 
 IS_MAC_ARM = 0
 IS_MAC_X86 = 0

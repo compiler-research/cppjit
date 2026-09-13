@@ -4,7 +4,7 @@ import tempfile
 
 import py
 from pytest import raises
-from support import needs_dictionary, setup_make
+from support import needs_dictionary, setup_make, soext
 
 # reuse the example01
 currpath = py.path.local(__file__).dirpath()
@@ -48,17 +48,19 @@ class TestBASICAPI:
         with raises(OSError, match="No such directory"):
             cppjit.add_library_path("not/a/real/path")
 
-        with tempfile.TemporaryDirectory() as tpath:
+        # once loaded, the copied library is mapped into the process; Windows
+        # then refuses to delete it, which would fail the cleanup
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tpath:
             cppjit.add_library_path(tpath)
 
             # now we should actually see if load library can follow this...
             # first, try to load without moving to directory...
             with raises(RuntimeError, match="Could not load library"):
-                cppjit.load_library("test.so")
+                cppjit.load_library("test" + soext)
 
             # then copy to our rpath, and make sure it can be loaded now
-            shutil.copyfile(test_dct + ".so", tpath + "/test.so")
-            cppjit.load_library("test.so")
+            shutil.copyfile(test_dct + soext, tpath + "/test" + soext)
+            cppjit.load_library("test" + soext)
 
     def test03a_load_library_failure_reason(self):
         """load_library reports the loader's failure reason"""
