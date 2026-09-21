@@ -2,20 +2,13 @@
 #include "cpyrt.h"
 
 using namespace cppjit;
-#include "structmember.h" // from Python
-#include "cpyrt/Reflex.h"
-#if PY_VERSION_HEX < 0x030b0000
-#include "code.h" // from Python
-#endif
-#ifndef CO_NOFREE
-// python2.2 does not have CO_NOFREE defined
-#define CO_NOFREE 0x0040
-#endif
 #include "CPPInstance.h"
 #include "CPPOverload.h"
 #include "CallContext.h"
 #include "PyStrings.h"
 #include "Utility.h"
+#include "structmember.h" // from Python
+#include "cpyrt/Reflex.h"
 
 // Standard
 #include <algorithm>

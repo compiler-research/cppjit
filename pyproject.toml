@@ -116,7 +116,6 @@ ignore = [
 # the star import is load-bearing: it pulls the merged extension's names into
 # the package namespace, and everything below it depends on them
 "python/cppjit/__init__.py" = ["F403", "F405"]
-"test/assert_interactive.py" = ["F403", "F405"]
 # binding-test idioms: == True/False and type(x) == y assert proxy comparison
 # semantics, fixtures use short upstream names, and unused locals hold
 # references to control C++ object lifetimes

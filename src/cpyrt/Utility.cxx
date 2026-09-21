@@ -25,10 +25,6 @@ using namespace cppjit;
 #include <utility>
 
 //- data _____________________________________________________________________
-#if PY_VERSION_HEX < 0x030b0000
-bool cpyrt::gDictLookupActive = false;
-#endif
-
 typedef std::unordered_map<std::string, std::string> TC2POperatorMapping_t;
 static TC2POperatorMapping_t gC2POperatorMapping;
 static std::set<std::string> gOpSkip;

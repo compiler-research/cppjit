@@ -14,10 +14,6 @@ namespace cppjit::cpyrt {
 
 class PyCallable;
 
-#if PY_VERSION_HEX < 0x030b0000
-extern bool gDictLookupActive;
-#endif
-
 // additional converter functions
 unsigned long PyLongOrInt_AsULong(PyObject* pyobject);
 PY_ULONG_LONG PyLongOrInt_AsULong64(PyObject* pyobject);

@@ -39,47 +39,7 @@ PyObject* Instance_FromVoidPtr(void* addr, const std::string& classname,
 #include <utility>
 #include <vector>
 
-#if PY_VERSION_HEX < 0x030b0000
-namespace cppjit::cpyrt {
-extern dict_lookup_func gDictLookupOrg;
-dict_lookup_func gDictLookupOrg = nullptr;
-} // namespace cppjit::cpyrt
-#endif
-
 std::unordered_map<interop::TCppType_t, interop::TCppType_t> TypeReductionMap;
-
-// Note: as of py3.11, dictionary objects no longer carry a function pointer for
-// the lookup, so it can no longer be shimmed and "from cppjit.interactive
-// import *" thus no longer works.
-#if PY_VERSION_HEX < 0x030b0000
-
-//- from Python's dictobject.c -------------------------------------------------
-typedef struct PyDictKeyEntry {
-  /* Cached hash code of me_key. */
-  Py_hash_t me_hash;
-  PyObject* me_key;
-  PyObject* me_value; /* This field is only meaningful for combined tables */
-} PyDictEntry;
-
-typedef struct _dictkeysobject {
-  Py_ssize_t dk_refcnt;
-  Py_ssize_t dk_size;
-  dict_lookup_func dk_lookup;
-  Py_ssize_t dk_usable;
-  Py_ssize_t dk_nentries;
-  union {
-    int8_t as_1[8];
-    int16_t as_2[4];
-    int32_t as_4[2];
-#if SIZEOF_VOID_P > 4
-    int64_t as_8[1];
-#endif
-  } dk_indices;
-} PyDictKeysObject;
-
-#define CPYRT_GET_DICT_LOOKUP(mp) ((dict_lookup_func&)mp->ma_keys->dk_lookup)
-
-#endif // PY_VERSION_HEX < 0x030b0000
 
 //- data -----------------------------------------------------------------------
 static PyObject* nullptr_repr(PyObject*) {
@@ -290,145 +250,6 @@ std::unordered_map<std::string, std::vector<PyObject*>>& pythonizations() {
 namespace {
 
 using namespace cppjit::cpyrt;
-
-//----------------------------------------------------------------------------
-#if PY_VERSION_HEX < 0x030b0000
-namespace {
-
-class GblGetter {
-public:
-  GblGetter() {
-    PyObject* cppjit = PyImport_AddModule((char*)"cppjit");
-    fGbl = PyObject_GetAttrString(cppjit, (char*)"gbl");
-  }
-  ~GblGetter() { Py_DECREF(fGbl); }
-
-  PyObject* operator*() { return fGbl; }
-
-private:
-  PyObject* fGbl;
-};
-
-} // unnamed namespace
-
-inline Py_ssize_t OrgDictLookup(PyDictObject* mp, PyObject* key, Py_hash_t hash,
-                                PyObject*** value_addr, Py_ssize_t* hashpos) {
-  return (*gDictLookupOrg)(mp, key, hash, value_addr, hashpos);
-}
-#define CPYRT_ORGDICT_LOOKUP(mp, key, hash, value_addr, hashpos)               \
-  OrgDictLookup(mp, key, hash, value_addr, hashpos)
-
-Py_ssize_t cpyrtLookDictString(PyDictObject* mp, PyObject* key, Py_hash_t hash,
-                               PyObject*** value_addr, Py_ssize_t* hashpos) {
-  static GblGetter gbl;
-  Py_ssize_t ep;
-
-  // first search dictionary itself
-  ep = CPYRT_ORGDICT_LOOKUP(mp, key, hash, value_addr, hashpos);
-  if (gDictLookupActive)
-    return ep;
-
-  if (ep >= 0)
-    return ep;
-
-  // filter for builtins
-  if (PyDict_GetItem(PyEval_GetBuiltins(), key) != 0)
-    return ep;
-
-  // normal lookup failed, attempt to get C++ enum/global/class from top-level
-  gDictLookupActive = true;
-
-  // attempt to get C++ enum/global/class from top-level
-  PyObject* val = PyObject_GetAttr(*gbl, key);
-
-  if (val) {
-    // success ...
-
-    if (CPPDataMember_CheckExact(val)) {
-      // don't want to add to dictionary (the proper place would be the
-      // dictionary of the (meta)class), but modifying ep will be noticed no
-      // matter what; just return the actual value and live with the copy in
-      // the dictionary (mostly, this is correct)
-      PyObject* actual_val = Py_TYPE(val)->tp_descr_get(val, nullptr, nullptr);
-      Py_DECREF(val);
-      val = actual_val;
-    }
-
-    // add reference to C++ entity in the given dictionary
-    CPYRT_GET_DICT_LOOKUP(mp) = gDictLookupOrg; // prevent recursion
-    if (PyDict_SetItem((PyObject*)mp, key, val) == 0) {
-      ep = CPYRT_ORGDICT_LOOKUP(mp, key, hash, value_addr, hashpos);
-    } else {
-      ep = -1;
-    }
-    CPYRT_GET_DICT_LOOKUP(mp) = cpyrtLookDictString; // restore
-
-    // done with val
-    Py_DECREF(val);
-  } else
-    PyErr_Clear();
-
-  if (mp->ma_keys->dk_usable <= 0) {
-    // big risk that this lookup will result in a resize, so force it here
-    // to be able to reset the lookup function; of course, this is nowhere
-    // near fool-proof, but should cover interactive usage ...
-    CPYRT_GET_DICT_LOOKUP(mp) = gDictLookupOrg;
-    const int maxinsert = 5;
-    PyObject* buf[maxinsert];
-    for (int varmax = 1; varmax <= maxinsert; ++varmax) {
-      for (int ivar = 0; ivar < varmax; ++ivar) {
-        buf[ivar] = cpyrt_PyText_FromFormat("__CPYRT_FORCE_RESIZE_%d", ivar);
-        PyDict_SetItem((PyObject*)mp, buf[ivar], Py_None);
-      }
-      for (int ivar = 0; ivar < varmax; ++ivar) {
-        PyDict_DelItem((PyObject*)mp, buf[ivar]);
-        Py_DECREF(buf[ivar]);
-      }
-      if (0 < mp->ma_keys->dk_usable)
-        break;
-    }
-
-    // make sure the entry pointer is still valid by re-doing the lookup
-    ep = CPYRT_ORGDICT_LOOKUP(mp, key, hash, value_addr, hashpos);
-
-    // full reset of all lookup functions
-    gDictLookupOrg = CPYRT_GET_DICT_LOOKUP(mp);
-    CPYRT_GET_DICT_LOOKUP(mp) = cpyrtLookDictString; // restore
-  }
-
-  // stopped calling into the reflection system
-  gDictLookupActive = false;
-  return ep;
-}
-
-#endif // PY_VERSION_HEX < 0x030b0000
-
-//----------------------------------------------------------------------------
-static PyObject* SetCppLazyLookup(PyObject*, PyObject* args) {
-#if PY_VERSION_HEX < 0x030b0000
-  // Modify the given dictionary to install the lookup function that also
-  // tries the global C++ namespace before failing. Called on a module's
-  // dictionary, this allows for lazy lookups. This works fine for p3.2 and
-  // earlier, but should not be used beyond interactive code for p3.3 and later
-  // b/c resizing causes the lookup function to revert to the default
-  // (lookdict_unicode_nodummy).
-  PyDictObject* dict = nullptr;
-  if (!PyArg_ParseTuple(args, const_cast<char*>("O!"), &PyDict_Type, &dict))
-    return nullptr;
-
-  CPYRT_GET_DICT_LOOKUP(dict) = cpyrtLookDictString;
-#else
-  // As of py3.11, there is no longer a lookup function pointer in the dict
-  // object to replace. Since this feature is not widely advertised, it's simply
-  // dropped
-  if (PyErr_WarnEx(PyExc_RuntimeWarning,
-                   (char*)"lazy lookup is no longer supported", 1) < 0)
-    return nullptr;
-  (void)args; // avoid warning about unused parameter
-#endif
-
-  Py_RETURN_NONE;
-}
 
 //----------------------------------------------------------------------------
 static PyObject* MakeCppTemplateClass(PyObject* /* self */, PyObject* args) {
@@ -1020,8 +841,6 @@ static PyMethodDef gcpyrtMethods[] = {
      METH_VARARGS, (char*)"cppjit internal function"},
     {(char*)"MakeCppTemplateClass", (PyCFunction)MakeCppTemplateClass,
      METH_VARARGS, (char*)"cppjit internal function"},
-    {(char*)"_set_cpp_lazy_lookup", (PyCFunction)SetCppLazyLookup, METH_VARARGS,
-     (char*)"cppjit internal function"},
     {(char*)"_DestroyPyStrings", (PyCFunction)cpyrt::DestroyPyStrings,
      METH_NOARGS, (char*)"cppjit internal function"},
     {(char*)"addressof", (PyCFunction)addressof, METH_VARARGS | METH_KEYWORDS,
@@ -1093,19 +912,6 @@ extern "C" PyObject* PyInit_libcppjit() {
   // load commonly used python strings
   if (!cpyrt::CreatePyStrings())
     return nullptr;
-
-    // setup interpreter
-
-#if PY_VERSION_HEX < 0x030b0000
-  // prepare for laziness (the insert is needed to capture the most generic
-  // lookup function, just in case ...)
-  PyObject* dict = PyDict_New();
-  PyObject* notstring = PyInt_FromLong(5);
-  PyDict_SetItem(dict, notstring, notstring);
-  Py_DECREF(notstring);
-  gDictLookupOrg = (dict_lookup_func)((PyDictObject*)dict)->ma_keys->dk_lookup;
-  Py_DECREF(dict);
-#endif // PY_VERSION_HEX < 0x030b0000
 
   // setup this module
   gThisModule = PyModule_Create(&moduledef);

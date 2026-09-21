@@ -472,19 +472,6 @@ class TestFRAGILE:
 
         assert "OpaqueType" in cppjit.gbl.fragile.__dict__
 
-    def test17_interactive(self):
-        """Test the usage of 'from cppjit.interactive import *'"""
-
-        if 0x030B0000 <= sys.hexversion:
-            skip('"from cppjit.interactive import *" is no longer supported')
-
-        oldsp = sys.path[:]
-        sys.path.append(".")
-        try:
-            import assert_interactive  # noqa: F401
-        finally:
-            sys.path = oldsp
-
     def test18_overload(self):
         """Test usage of __overload__"""
 

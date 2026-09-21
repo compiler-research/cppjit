@@ -40,13 +40,8 @@ namespace cppjit::cpyrt {
 typedef Py_ssize_t dim_t;
 } // namespace cppjit::cpyrt
 
-#if PY_VERSION_HEX >= 0x030b0000
 typedef Py_ssize_t (*dict_lookup_func)(PyDictObject*, PyObject*, Py_hash_t,
                                        PyObject**);
-#else
-typedef Py_ssize_t (*dict_lookup_func)(PyDictObject*, PyObject*, Py_hash_t,
-                                       PyObject***, Py_ssize_t*);
-#endif
 
 // for 3.0 support (backwards compatibility, really)
 #define cpyrt_PyText_Check PyUnicode_Check
