@@ -55,7 +55,7 @@ jobs:
         id: llvm
         with:
           recipe: llvm-wheel
-          version: '21.1.8'
+          version: '22.1.8'
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}
           ref: 02f380b2e46746cd1c948c085894b8594a867fba
@@ -180,7 +180,7 @@ jobs:
         id: llvm
         with:
           recipe: llvm-wheel
-          version: '21.1.8'
+          version: '22.1.8'
           os: ubuntu-24.04
           arch: x86_64
           ref: 02f380b2e46746cd1c948c085894b8594a867fba
