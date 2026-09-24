@@ -341,9 +341,20 @@ GetCppInstance(PyObject* pyobject,
 }
 
 //- custom helpers to check ranges -------------------------------------------
+static inline bool IsCPPEnumInstance(PyObject* pyobject) {
+  // cppjit enums are int subclasses created with __underlying on the class
+  if (!PyLong_Check(pyobject) || PyLong_CheckExact(pyobject) ||
+      PyBool_Check(pyobject))
+    return false;
+  return PyObject_HasAttr((PyObject*)Py_TYPE(pyobject),
+                          cppjit::cpyrt::PyStrings::gUnderlying);
+}
+
+// bools and enum instances match integer parameters in the implicit round only
 static inline bool ImplicitBool(PyObject* pyobject, cpyrt::CallContext* ctxt) {
   using namespace cppjit::cpyrt;
-  if (!AllowImplicit(ctxt) && PyBool_Check(pyobject)) {
+  if (!AllowImplicit(ctxt) &&
+      (PyBool_Check(pyobject) || IsCPPEnumInstance(pyobject))) {
     if (!NoImplicit(ctxt))
       ctxt->fFlags |= CallContext::kHaveImplicit;
     return false;
@@ -1234,6 +1245,49 @@ bool cpyrt::ULLongConverter::ToMemory(PyObject* value, void* address,
   }
   *((PY_ULONG_LONG*)address) = ull;
   return true;
+}
+
+//----------------------------------------------------------------------------
+cpyrt::EnumConverter::~EnumConverter() { DestroyConverter(fBase); }
+
+bool cpyrt::EnumConverter::SetArg(PyObject* pyobject, Parameter& para,
+                                  CallContext* ctxt) {
+  // an instance of the same enum is an exact match; anything else, plain
+  // integers included, converts in the implicit round only, as in C++
+  if (ctxt && !AllowImplicit(ctxt)) {
+    bool exact = false;
+    if (IsCPPEnumInstance(pyobject)) {
+      PyObject* pycppname =
+          PyObject_GetAttr((PyObject*)Py_TYPE(pyobject), PyStrings::gCppName);
+      if (pycppname) {
+        exact = (fEnumName == cpyrt_PyText_AsString(pycppname));
+        Py_DECREF(pycppname);
+      } else
+        PyErr_Clear();
+    }
+    if (!exact) {
+      if (!NoImplicit(ctxt))
+        ctxt->fFlags |= CallContext::kHaveImplicit;
+      return false;
+    }
+    // the base integer converter defers enum instances, so lift the gate
+    CallContextRAII<CallContext::kAllowImplicit> allow(ctxt);
+    return fBase->SetArg(pyobject, para, ctxt);
+  }
+  return fBase->SetArg(pyobject, para, ctxt);
+}
+
+PyObject* cpyrt::EnumConverter::FromMemory(void* address) {
+  return fBase->FromMemory(address);
+}
+
+bool cpyrt::EnumConverter::ToMemory(PyObject* value, void* address,
+                                    PyObject* ctxt) {
+  return fBase->ToMemory(value, address, ctxt);
+}
+
+std::string cpyrt::EnumConverter::GetFailureMsg() {
+  return fBase->GetFailureMsg();
 }
 
 //----------------------------------------------------------------------------
@@ -3589,6 +3643,16 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
   // resolve typedefs etc.
   interop::TCppType_t resolvedType = interop::ResolveType(type);
   const std::string& resolvedTypeStr = interop::GetTypeAsString(resolvedType);
+
+  // a by-value enum parameter exact-matches instances of the same enum; the
+  // resolved type is its underlying integer, which carries the conversion
+  if (interop::IsEnumType(type) && fullType != "std::byte") {
+    h = gConvFactories.find(resolvedTypeStr);
+    if (h != gConvFactories.end())
+      return new EnumConverter(
+          (h->second)(dims),
+          interop::GetScopedFinalName(interop::GetScopeFromType(type)));
+  }
 
   // a full, qualified matching converter is preferred
   if (resolvedTypeStr != fullType) {

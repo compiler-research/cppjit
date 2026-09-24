@@ -128,6 +128,27 @@ CPPJIT_DECLARE_REFCONVERTER(Float);
 CPPJIT_DECLARE_REFCONVERTER(Double);
 CPPJIT_DECLARE_REFCONVERTER(LDouble);
 
+// by-value enum parameters: exact-match instances of the same enum in the
+// first resolution round, delegate storage to the underlying integer converter
+class EnumConverter : public Converter {
+public:
+  EnumConverter(Converter* base, const std::string& enum_name)
+      : fBase(base), fEnumName(enum_name) {}
+  ~EnumConverter() override;
+
+public:
+  bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) override;
+  PyObject* FromMemory(void* address) override;
+  bool ToMemory(PyObject* value, void* address,
+                PyObject* ctxt = nullptr) override;
+  bool HasState() override { return true; }
+  std::string GetFailureMsg() override;
+
+private:
+  Converter* fBase;
+  std::string fEnumName;
+};
+
 class VoidConverter : public Converter {
 public:
   bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) override;

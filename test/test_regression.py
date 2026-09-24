@@ -1658,3 +1658,31 @@ class TestREGRESSION:
         # degrade to the generic repr
         assert str(bare) == repr(bare)
         assert "Bare object at" in str(bare)
+
+    def test54_enum_arg_overload_priority(self):
+        """Enum overloads resolve like C++ for both int and enum arguments"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace EnumArgPriority {
+            enum Color { Red = 0, Green = 1, Blue = 2 };
+            int pick(Color)        { return 1; }
+            int pick(unsigned int) { return 2; }
+            int only_enum(Color c) { return 10 + (int)c; }
+            int only_uint(unsigned int v) { return 20 + (int)v; }
+        }""")
+
+        ns = cppjit.gbl.EnumArgPriority
+
+        # C++ has no implicit int -> enum conversion
+        assert ns.pick(2) == 2
+
+        # an enum instance is an exact match for its own enum overload
+        assert ns.pick(ns.Color.Green) == 1
+
+        # an enum parameter is only deprioritized, never unusable
+        assert ns.only_enum(2) == 12
+
+        # an enum instance still converts to an integer parameter
+        assert ns.only_uint(ns.Color.Blue) == 22
