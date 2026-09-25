@@ -1,0 +1,27 @@
+# cppjit_bazel: shared Bazel machinery (copts, linkopts, rules, the @llvm repo)
+# for the cppjit stack (cppinterop, cppjit).
+#
+# It lives in cppjit/bazel/ but is its OWN module so the consumer repos can
+# depend on it without forming a bzlmod cycle: cppjit depends on cppjit_bazel, so
+# cppjit_bazel cannot depend back on cppjit. Keeping it module-local (rather than a
+# registry artifact) keeps the monorepo self-contained.
+module(
+    name = "cppjit_bazel",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "rules_python", version = "1.0.0")
+bazel_dep(name = "googletest", version = "1.15.2")
+bazel_dep(name = "platforms", version = "0.0.10")
+
+# cppjit_bazel owns the @llvm repo so its own defs.bzl/rules.bzl can reference it.
+llvm = use_extension("//:llvm.bzl", "llvm")
+use_repo(llvm, llvm = "cppjit_llvm")
+
+# The @llvm repo also generates a centralized clang C++ toolchain
+# (@llvm//:cc_toolchain) so consumers can build with the LLVM tree's clang +
+# matching ABI from a single place. It is NOT registered here on purpose: a
+# consumer that already has its own C++ toolchain must not have a second one
+# forced on it. Standalone consumers opt in by adding
+#   register_toolchains("@llvm//:cc_toolchain")
+# to their own MODULE.bazel (see cppjit and CppInterOp).

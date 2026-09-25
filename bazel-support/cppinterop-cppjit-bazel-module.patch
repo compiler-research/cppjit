@@ -1,0 +1,56 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index dd26bb5..f64dd0b 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -1,18 +1,18 @@
+ """Experimental Bazel build for CppInterOp. CMake is the supported build;
+ this translates the CMake recipe to build libclangCppInterOp against a local
+-LLVM tree (selected via the LLVM_DIR env var, see @cppyy_bazel//:llvm.bzl)."""
++LLVM tree (selected via the LLVM_DIR env var, see @cppjit_bazel//:llvm.bzl)."""
+ 
+ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+-load("@cppyy_bazel//:defs.bzl", "BASE_COPTS", "CPPINTEROP_COPTS", "DEFAULT_LTO_OPT_LEVEL", "LTO_OPT_LEVELS", "is_main_repo", "jit_cxx_interp_args", "llvm_linkopts", "llvm_lto_opt_linkopts", "llvm_system_libs", "llvm_tblgen_linkopts", "repo_rloc")
++load("@cppjit_bazel//:defs.bzl", "BASE_COPTS", "CPPINTEROP_COPTS", "DEFAULT_LTO_OPT_LEVEL", "LTO_OPT_LEVELS", "is_main_repo", "jit_cxx_interp_args", "llvm_linkopts", "llvm_lto_opt_linkopts", "llvm_system_libs", "llvm_tblgen_linkopts", "repo_rloc")
+ load(
+-    "@cppyy_bazel//:rules.bzl",
++    "@cppjit_bazel//:rules.bzl",
+     "cppinterop_buildinfo_inc",
+     "cppinterop_cc_test",
+     "cppinterop_cxx_shim",
+     "cppinterop_dispatch_cc_test",
+     "cppinterop_tblgen_inc_files",
+ )
+ 
+ # libclangCppInterOp is a sanitizer boundary: it's dlopen'd by a (possibly
+ # non-instrumented) host interpreter and works directly with the non-sanitized
+ # LLVM/clang libraries, so an asan/ubsan-instrumented build would die on
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 07e401d..938a05b 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -1,20 +1,20 @@
+ module(
+     name = "cppinterop",
+     version = "0.1.0",
+ )
+ 
+-bazel_dep(name = "cppyy_bazel", version = "0.1.0")
++bazel_dep(name = "cppjit_bazel", version = "0.1.0")
+ local_path_override(
+-    module_name = "cppyy_bazel",
+-    path = "../cppyy/bazel",
++    module_name = "cppjit_bazel",
++    path = "../cppjit/bazel",
+ )
+ 
+ bazel_dep(name = "bazel_skylib", version = "1.7.1")
+ bazel_dep(name = "googletest", version = "1.15.2")
+ bazel_dep(name = "google_benchmark", version = "1.9.1")
+ 
+-llvm = use_extension("@cppyy_bazel//:llvm.bzl", "llvm")
++llvm = use_extension("@cppjit_bazel//:llvm.bzl", "llvm")
+ use_repo(llvm, llvm = "cppjit_llvm")
+ 
+-# Opt in to the centralized clang toolchain from cppyy_bazel (standalone build).
++# Opt in to the centralized clang toolchain from cppjit_bazel (standalone build).
+ register_toolchains("@llvm//:cc_toolchain")

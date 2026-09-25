@@ -1,0 +1,444 @@
+load("@cppjit_bazel//:defs.bzl", "BASE_COPTS", "LLVM_MAJOR", "jit_cxx_interp_args", "repo_loc")
+load("@cppjit_bazel//:rules.bzl", "cppjit_py_test", "cppjit_selflocation_py_test", "cppjit_test_dict_sos")
+load("@cppjit_bazel//:staging.bzl", "stage_files")
+load("@@rules_cc+//cc:defs.bzl", "cc_library", "cc_shared_library")
+load("@rules_python//python:defs.bzl", "py_library")
+
+# cppjit is a sanitizer boundary: libcppjit.so is dlopen'd by a (possibly
+# non-instrumented) host interpreter and works directly with the non-sanitized
+# LLVM/clang runtime, so an asan/ubsan-instrumented build would die on undefined
+# __asan_* symbols at load. Opt the package out; harmless when the consumer
+# build isn't sanitized.
+package(
+    default_visibility = ["//visibility:public"],
+    features = [
+        "-asan",
+        "-ubsan",
+    ],
+)
+
+# The pytest the py_tests run under. Defaults to the standalone build's hermetic
+# hub; a consumer whose Python toolchain already provides pytest (e.g. a conda
+# interpreter) overrides this to :ambient_pytest so no hub wheel is needed:
+#   --@cppjit//:pytest=@cppjit//:ambient_pytest
+label_flag(
+    name = "pytest",
+    build_setting_default = "@cppjit_test_deps//pytest",
+)
+
+# Empty stand-in: pytest comes from the interpreter, not a Bazel dep.
+py_library(name = "ambient_pytest")
+
+# The JIT C++ toolchain the py_tests need at RUN time (clang-repl compiles
+# in-process). Default empty -> standalone uses the host. A consumer without one
+# stages headers/clang into runfiles here, paired with :jit_cxx_interp_args:
+#   --@cppjit//:jit_cxx_data=//my/pkg:cppjit_jit_cxx_data
+label_flag(
+    name = "jit_cxx_data",
+    build_setting_default = ":jit_cxx_data_default",
+)
+
+filegroup(
+    name = "jit_cxx_data_default",
+    srcs = [],
+)
+
+# The matching --gcc-toolchain / -stdlib++-isystem args (CPPINTEROP_JIT_CXX_ARGS
+# make-var, appended to the py_tests' interpreter env). Default empty; a consumer
+# staging :jit_cxx_data overrides with its own jit_cxx_interp_args() target:
+#   --@cppjit//:jit_cxx_interp_args=//my/pkg:cppjit_jit_cxx_interp_args
+label_flag(
+    name = "jit_cxx_interp_args",
+    build_setting_default = ":jit_cxx_interp_args_default",
+)
+
+jit_cxx_interp_args(
+    name = "jit_cxx_interp_args_default",
+    args = "",
+)
+
+# The public C-API headers, installed as cppjit/interop/include/cpyrt/*.h.
+filegroup(
+    name = "headers",
+    srcs = [
+        "src/cpyrt/API.h",
+        "src/cpyrt/CommonDefs.h",
+        "src/cpyrt/DispatchPtr.h",
+        "src/cpyrt/PyException.h",
+        "src/cpyrt/Reflex.h",
+    ],
+)
+
+# Public headers as a cc_library carrying the right include root, so a
+# cross-Python consumer (see :srcs) gets <cpyrt/...> resolvable by depending on
+# this instead of re-deriving the include path in its own package.
+cc_library(
+    name = "headers_lib",
+    hdrs = [":headers"],
+    includes = ["src"],
+)
+
+# The extension module's source + private headers, exposed so a consumer can
+# build the extension against a different Python (e.g. a consumer building per-conda-
+# env variants); the :solib target here is single-version.
+filegroup(
+    name = "srcs",
+    srcs = glob([
+        "src/cpyrt/*.cxx",
+        "src/cpyrt/*.h",
+        "src/cpyrt/*.inc",
+    ]),
+)
+
+# The interop wrapper's own headers. The CppInterOp API headers stay in
+# @cppinterop; only the wrapper-local ones live here.
+filegroup(
+    name = "interop_headers",
+    srcs = glob(["src/interop/*.h"]),
+)
+
+# The two interop translation units the merged library compiles (the CMake
+# INTEROP_SOURCES list), for the same cross-Python case as :srcs.
+filegroup(
+    name = "interop_srcs",
+    srcs = [
+        "src/interop/cppinterop_dispatch.cxx",
+        "src/interop/interop_wrapper.cxx",
+    ],
+)
+
+# One merged library, mirroring CMake's single `add_library(cppjit SHARED ...)`:
+# every src/cpyrt/*.cxx plus the two interop translation units.
+cc_library(
+    name = "solib_lib",
+    srcs = glob(["src/cpyrt/*.cxx"]) + [":interop_srcs"],
+    hdrs = glob([
+        "src/cpyrt/*.h",
+        "src/cpyrt/*.inc",
+        "src/interop/*.h",
+    ]) + ["@cppinterop//:headers"],
+    copts = BASE_COPTS + [
+        # BASE_COPTS sets -fno-exceptions/-fno-rtti; both halves need them
+        # (throw std::runtime_error / PyException, typeid for AutoCastRTTI).
+        "-fexceptions",
+        "-frtti",
+        # CppInterOp headers are <CppInterOp/...>; include root is the source
+        # tree plus the genfiles tree where the tblgen'd .inc headers land.
+        "-I" + repo_loc("@cppinterop") + "/include",
+        "-I$(GENDIR)/" + repo_loc("@cppinterop") + "/include",
+        # CMAKE: the relative layout cppinterop_paths() anchors at libcppjit.so's
+        # own directory. The fallback prefix is the runfiles path of this repo's
+        # python/ dir, which is where the solib and the staged tree land.
+        "-DCPPINTEROP_INSTALL_PREFIX='\"python/cppjit\"'",
+        "-DCPPINTEROP_LIBRARY='\"interop/lib/libclangCppInterOp.so\"'",
+        "-DCPPINTEROP_INCLUDE_DIR='\"interop/include\"'",
+        "-DCPPJIT_CLANG_MAJOR='\"" + LLVM_MAJOR + "\"'",
+        "-DCPPJIT_CLANG_INCLUDE_DIR='\"interop/lib/clang/" + LLVM_MAJOR + "\"'",
+        # CMAKE: -Wall -Wno-strict-aliasing -Wno-register.
+        "-Wall",
+        "-Wno-register",  # C++17 vs. Python headers
+        "-Wno-strict-aliasing",  # not all Pythons provide this
+        "-Wno-cast-function-type",  # g++: CPyFunction casts
+        # Intentional non-override overrides, an unused var and a non-canonical
+        # dtor name; demote so a consumer toolchain with -Werror does not make
+        # them fatal.
+        "-Wno-error=inconsistent-missing-override",
+        "-Wno-inconsistent-missing-override",
+        "-Wno-error=unused-variable",
+        "-Wno-unused-variable",
+        "-Wno-error=dtor-name",
+        "-Wno-dtor-name",
+        "-Wno-error=unused-parameter",
+        "-Wno-unused-parameter",
+    ],
+    data = ["@cppinterop//:headers"],
+    # CMAKE: target_include_directories PRIVATE src, src/cpyrt, src/interop.
+    includes = [
+        "src",
+        "src/cpyrt",
+        "src/interop",
+    ],
+    deps = [
+        "@rules_python//python/cc:current_py_cc_headers",
+        "@rules_python//python/cc:current_py_cc_libs",
+    ],
+)
+
+# Output name MUST be libcppjit.so inside the cppjit package:
+# _preload_backend_library imports it as `cppjit.libcppjit`, and
+# cppinterop_paths() anchors the staged interop/ tree at this directory. No link
+# against CppInterOp: cppinterop_dispatch.cxx defines every Cpp:: entry point
+# and dlopen's the real library at runtime (mirrors CMake, which only
+# add_dependencies).
+cc_shared_library(
+    name = "solib",
+    shared_lib_name = "python/cppjit/libcppjit.so",
+    user_link_flags = [
+        "-Wl,-Bsymbolic-functions",
+        # Bazel omits the soname when shared_lib_name carries a directory;
+        # CMake always sets one, so set it back for artifact parity.
+        "-Wl,-soname,libcppjit.so",
+    ],
+    deps = [":solib_lib"],
+)
+
+# Wheel-layout staging: the wheel bundles CppInterOp, the cpyrt API headers and
+# clang's builtin headers under cppjit/interop, and libcppjit.so self-locates
+# them beside itself. Recreate that shape in the Bazel tree so the same lookup
+# works here.
+stage_files(
+    name = "staged_cppinterop_solib",
+    srcs = ["@cppinterop//:solib"],
+    out_dir = "python/cppjit/interop/lib",
+    path_anchor = "lib",
+)
+
+stage_files(
+    name = "staged_cppinterop_headers",
+    srcs = ["@cppinterop//:headers"],
+    out_dir = "python/cppjit/interop/include",
+    path_anchor = "include",
+)
+
+stage_files(
+    name = "staged_cpyrt_headers",
+    srcs = [":headers"],
+    out_dir = "python/cppjit/interop/include/cpyrt",
+    path_anchor = "cpyrt",
+)
+
+# The build clang's builtin headers, laid out as a headers-only resource dir.
+# Their presence is what makes acquireOrCreateInterpreter pin -resource-dir
+# instead of probing the host for a same-major clang.
+stage_files(
+    name = "staged_clang_resource_headers",
+    srcs = ["@llvm//:clang_resource_files"],
+    out_dir = "python/cppjit/interop/lib/clang",
+    path_anchor = "clang",
+)
+
+# The wheel payload as one tree: everything under python/ re-rooted at
+# site_packages/, which is what `pip install .` writes into site-packages.
+# Same inputs as :data plus the pure-Python sources, so the layout the tests
+# exercise and the layout an installer ships stay one thing.
+stage_files(
+    name = "site_packages",
+    srcs = [
+        ":solib",
+        ":staged_clang_resource_headers",
+        ":staged_cppinterop_headers",
+        ":staged_cppinterop_solib",
+        ":staged_cpyrt_headers",
+    ] + glob(["python/cppjit/**/*.py"]),
+    out_dir = "site_packages",
+    path_anchor = "python",
+)
+
+# Convenience aggregate of the runtime artifacts the tests load.
+filegroup(
+    name = "data",
+    srcs = [
+        ":solib",
+        ":staged_clang_resource_headers",
+        ":staged_cppinterop_headers",
+        ":staged_cppinterop_solib",
+        ":staged_cpyrt_headers",
+        "@cppinterop//:solib",
+    ],
+)
+
+# The cppjit package: pure Python plus the runtime libs staged at their
+# wheel-layout spots, so anything depending on it gets libcppjit.so +
+# libclangCppInterOp.so + the headers in its runfiles.
+py_library(
+    name = "lib",
+    srcs = glob(["python/cppjit/**/*.py"]),
+    data = [
+        ":headers",
+        ":solib",
+        ":staged_clang_resource_headers",
+        ":staged_cppinterop_headers",
+        ":staged_cppinterop_solib",
+        ":staged_cpyrt_headers",
+        "@cppinterop//:headers",
+        "@cppinterop//:solib",
+    ],
+    imports = ["python"],
+)
+
+# test/cpp/*.cxx + test/cpp/*.h consumed by the dict solibs and as py_test data.
+filegroup(
+    name = "cxxh",
+    srcs = glob([
+        "test/cpp/*.cxx",
+        "test/cpp/*.h",
+    ]),
+)
+
+# Per-key <key>.a + <key>Dict.so, mirroring test/Makefile's dict list.
+cppjit_test_dict_sos([
+    "advancedcpp",
+    "advancedcpp2",
+    "conversions",
+    "cpp11features",
+    "crossinheritance",
+    "datatypes",
+    "doc_helper",
+    "example01",
+    "fragile",
+    "operators",
+    "overloads",
+    "pythonizables",
+    "std_streams",
+    "stltypes",
+    "templates",
+])
+
+# One py_test per test/test_*.py; sokeys are the dicts each loads via setup_make().
+cppjit_py_test(
+    name = "test_aclassloader",
+    sokeys = ["example01"],
+)
+
+cppjit_py_test(
+    name = "test_advancedcpp",
+    sokeys = [
+        "advancedcpp",
+        "advancedcpp2",
+    ],
+)
+
+cppjit_py_test(name = "test_api")
+
+cppjit_py_test(
+    name = "test_basic_api",
+    sokeys = ["example01"],
+)
+
+cppjit_py_test(name = "test_boost")
+
+cppjit_py_test(name = "test_concurrent")
+
+cppjit_py_test(
+    name = "test_conversions",
+    sokeys = ["conversions"],
+)
+
+cppjit_py_test(
+    name = "test_cpp11features",
+    sokeys = ["cpp11features"],
+)
+
+# The C++23 cases skip unless the interpreter itself runs at -std=c++23, so this
+# cell raises the standard for its own process.
+cppjit_py_test(
+    name = "test_cpp23features",
+    extra_env = {"CPPINTEROP_EXTRA_INTERPRETER_ARGS": "-std=c++23"},
+)
+
+cppjit_py_test(
+    name = "test_crossinheritance",
+    sokeys = ["crossinheritance"],
+)
+
+cppjit_py_test(
+    name = "test_datatypes",
+    sokeys = ["datatypes"],
+)
+
+cppjit_py_test(
+    name = "test_doc_features",
+    sokeys = ["doc_helper"],
+)
+
+cppjit_py_test(name = "test_eigen")
+
+cppjit_py_test(
+    name = "test_fragile",
+    sokeys = ["fragile"],
+)
+
+cppjit_py_test(
+    name = "test_lowlevel",
+    sokeys = ["datatypes"],
+)
+
+cppjit_py_test(
+    name = "test_operators",
+    sokeys = ["operators"],
+)
+
+cppjit_py_test(
+    name = "test_overloads",
+    sokeys = ["overloads"],
+)
+
+cppjit_py_test(
+    name = "test_pythonify",
+    sokeys = ["example01"],
+)
+
+cppjit_py_test(
+    name = "test_pythonization",
+    sokeys = ["pythonizables"],
+)
+
+cppjit_py_test(name = "test_regression")
+
+cppjit_py_test(
+    name = "test_stltypes",
+    sokeys = ["stltypes"],
+)
+
+cppjit_py_test(
+    name = "test_streams",
+    sokeys = ["std_streams"],
+)
+
+cppjit_py_test(
+    name = "test_templates",
+    sokeys = ["templates"],
+)
+
+# The self-location property gate: no path env vars, foreign cwd. See the
+# macro's docstring in cppjit_bazel/rules.bzl.
+cppjit_selflocation_py_test(name = "test_selflocation")
+
+# leakcheck and numba are flaky/heavy in upstream CI. The frozen cppjit_py_test
+# macro takes no tags param, so they are declared as normal targets but kept
+# OUT of the :tests suite below.
+cppjit_py_test(name = "test_leakcheck")
+
+cppjit_py_test(name = "test_numba")
+
+# Cross-repo test_suite cannot use wildcards; list every gated target.
+test_suite(
+    name = "tests",
+    tests = [
+        ":test_aclassloader",
+        ":test_advancedcpp",
+        ":test_api",
+        ":test_basic_api",
+        ":test_boost",
+        ":test_concurrent",
+        ":test_conversions",
+        ":test_cpp11features",
+        ":test_cpp23features",
+        ":test_crossinheritance",
+        ":test_datatypes",
+        ":test_doc_features",
+        ":test_eigen",
+        ":test_fragile",
+        ":test_lowlevel",
+        ":test_operators",
+        ":test_overloads",
+        ":test_pythonify",
+        ":test_pythonization",
+        ":test_regression",
+        ":test_selflocation",
+        ":test_stltypes",
+        ":test_streams",
+        ":test_templates",
+        # test_leakcheck, test_numba intentionally excluded (flaky/heavy).
+    ],
+)

@@ -1,0 +1,51 @@
+# Best-effort, NON-GATING Bazel build. The supported build is setup.py/CMake;
+# this job never blocks a PR (continue-on-error). The build and test steps run
+# for real and surface a regression as a warning, not a false green.
+#
+# The build is standalone: CppInterOp comes from the pinned commit in
+# MODULE.bazel, so no sibling clone is needed. Only LLVM comes from the host.
+name: bazel (best-effort)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bazel:
+    name: bazel (best-effort) llvm${{ matrix.llvm }}
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        llvm: ["22"]
+    steps:
+      - name: Checkout cppjit
+        uses: actions/checkout@v7
+
+      - name: Setup LLVM ${{ matrix.llvm }}
+        uses: compiler-research/ci-workflows/actions/setup-llvm@main
+        with:
+          version: ${{ matrix.llvm }}
+          os: ubuntu-24.04
+
+      - name: Point LLVM_DIR at the tree root for the @llvm Bazel extension
+        run: |
+          # setup-llvm sets LLVM_DIR=<prefix>/lib/cmake/llvm (CMake convention);
+          # bazel/llvm.bzl needs the tree root holding bin/llvm-config.
+          echo "LLVM_DIR=${GITHUB_WORKSPACE}/install" >> "$GITHUB_ENV"
+
+      - name: bazel build //...
+        run: |
+          bazelisk build //... \
+            || echo "::warning::bazel build //... failed (best-effort, non-gating)"
+
+      - name: bazel test //...
+        run: |
+          bazelisk test //... \
+            || echo "::warning::bazel test //... failed (best-effort, non-gating)"

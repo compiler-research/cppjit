@@ -131,12 +131,63 @@ static bool loadDispatchAPI(const InterOpPaths& Paths) {
   return true;
 }
 
+// The directory this library was loaded from, absolutized and lexically
+// normalized: dladdr can report a relative or dotted path, which some
+// consumers of a derived path reject. Not realpath(): resolving the symlink
+// would escape a relocatable install layout.
+static std::string self_lib_dir() {
+#ifndef _WIN32
+  Dl_info info;
+  if (!dladdr((void*)&self_lib_dir, &info) || !info.dli_fname)
+    return "";
+  std::error_code ec;
+  std::filesystem::path p(info.dli_fname);
+  if (p.is_relative()) {
+    const std::filesystem::path cwd = std::filesystem::current_path(ec);
+    if (ec)
+      return "";
+    p = cwd / p;
+  }
+  return p.parent_path().lexically_normal().string();
+#else
+  return "";
+#endif
+}
+
+// ${ORIGIN} in CPPINTEROP_EXTRA_INTERPRETER_ARGS stands for this library's own
+// directory (see bazel/ORIGIN.md). Rewrite the variable in place: CppInterOp
+// re-reads it inside CreateInterpreter.
+static void expandOriginInInterpreterArgs() {
+  static const std::string PH = "${ORIGIN}";
+  const char* raw = getenv("CPPINTEROP_EXTRA_INTERPRETER_ARGS");
+  if (!raw)
+    return;
+  std::string args(raw);
+  if (args.find(PH) == std::string::npos)
+    return;
+  const std::string origin = self_lib_dir();
+  if (origin.empty()) {
+    std::cerr << "[cppjit-backend] cannot resolve ${ORIGIN} in "
+                 "CPPINTEROP_EXTRA_INTERPRETER_ARGS"
+              << std::endl;
+    return;
+  }
+  for (std::string::size_type pos = 0;
+       (pos = args.find(PH, pos)) != std::string::npos; pos += origin.size())
+    args.replace(pos, PH.size(), origin);
+#ifndef _WIN32
+  setenv("CPPINTEROP_EXTRA_INTERPRETER_ARGS", args.c_str(), 1);
+#endif
+}
+
 // CppInterOp itself appends CPPINTEROP_EXTRA_INTERPRETER_ARGS inside
 // CreateInterpreter, so nothing needs to be forwarded from here.
 static interop::TInterp_t
 acquireOrCreateInterpreter(const InterOpPaths& Paths) {
   if (auto existingInterp = Cpp::GetInterpreter())
     return existingInterp;
+
+  expandOriginInInterpreterArgs();
 
   std::vector<const char*> args = {"-std=c++17"};
 #if !(defined(__arm64__) && defined(__APPLE__))
