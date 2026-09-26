@@ -5,6 +5,7 @@
 #include "PyCallable.h"
 
 // Standard
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -62,6 +63,8 @@ public:
   PyObject* GetCoVarNames() override;
   PyObject* GetArgDefault(int iarg, bool silent = true) override;
   bool IsConst() override;
+  interop::AllocType GetAllocBehaviour() override;
+  bool GetDeallocBehaviour() override;
 
   PyObject* GetScopeProxy() override;
   interop::TCppFuncAddr_t GetFunctionAddress() override;
@@ -120,6 +123,8 @@ private:
 protected:
   // cached value that doubles as initialized flag (uninitialized if -1)
   int fArgsRequired;
+  std::optional<cppjit::interop::AllocType> fAllocType;
+  std::optional<bool> fDeallocType;
 };
 
 } // namespace cppjit::cpyrt

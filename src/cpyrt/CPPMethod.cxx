@@ -754,6 +754,36 @@ PyObject* cpyrt::CPPMethod::GetArgDefault(int iarg, bool silent) {
 bool cpyrt::CPPMethod::IsConst() { return interop::IsConstMethod(GetMethod()); }
 
 //----------------------------------------------------------------------------
+interop::AllocType cpyrt::CPPMethod::GetAllocBehaviour() {
+  if (fAllocType.has_value())
+    return *fAllocType;
+  interop::TCppMethod_t method = GetMethod();
+  if (!method) {
+    fAllocType = interop::AllocType::None;
+    return interop::AllocType::None;
+  }
+  if (!IsPointerType(interop::GetMethodReturnType(method))) {
+    fAllocType = interop::AllocType::None;
+    return interop::AllocType::None;
+  }
+  interop::AllocType attrResult = interop::IsAllocator(method);
+  fAllocType = attrResult;
+  return attrResult;
+}
+//----------------------------------------------------------------------------
+bool cpyrt::CPPMethod::GetDeallocBehaviour() {
+  if (fDeallocType.has_value())
+    return *fDeallocType;
+  interop::TCppMethod_t method = GetMethod();
+  if (!method) {
+    fDeallocType = false;
+    return false;
+  }
+  bool attrResult = interop::IsDeallocator(GetMethod());
+  fDeallocType = attrResult;
+  return attrResult;
+}
+//----------------------------------------------------------------------------
 PyObject* cpyrt::CPPMethod::GetScopeProxy() {
   // Get or build the scope of this method.
   return CreateScopeProxy(fScope);

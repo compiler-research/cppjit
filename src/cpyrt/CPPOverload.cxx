@@ -142,11 +142,18 @@ static inline void ResetCallState(CPPInstance* descr_self,
 
 // helper to factor out return logic of mp_call / mp_vectorcall
 static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
-                                     PyObject* result) {
+                                     PyObject* result, PyObject* const* args,
+                                     size_t nargsf) {
   // special case for python exceptions, propagated through C++ layer
   if (result) {
     CPPInstance* cppres =
         (CPPInstance*)(CPPInstance_Check(result) ? result : nullptr);
+
+    interop::AllocType AT =
+        pymeth->fMethodInfo->fMethods[0]->GetAllocBehaviour();
+    if (AT != interop::AllocType::None && AT != interop::AllocType::Null &&
+        AT != interop::AllocType::Unknown)
+      pymeth->fMethodInfo->fFlags |= CallContext::kIsCreator;
 
     // if this method creates new objects, always take ownership
     if (IsCreator(pymeth->fMethodInfo->fFlags)) {
@@ -158,8 +165,37 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
       }
 
       // ... or be a regular method with an object proxy return value
-      else if (cppres)
+      else if (cppres) {
         cppres->PythonOwns();
+        // After giving ownership, set proper flags to indicate allocation
+        // method/func
+        switch (AT) {
+        case interop::AllocType::Malloc:
+          cppres->fFlags |= CPPInstance::kIsMalloc;
+          break;
+        case interop::AllocType::NewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          break;
+        case interop::AllocType::OperatorNew:
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        case interop::AllocType::OperatorNewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        default:
+          break;
+        }
+      }
+    }
+
+    if (cpyrt_PyArgs_GET_SIZE(args, nargsf) != 0) {
+      if (pymeth->fMethodInfo->fMethods[0]->GetDeallocBehaviour()) {
+        if (CPPInstance_Check(args[0])) {
+          CPPInstance* cpparg = (CPPInstance*)args[0];
+          cpparg->CppOwns();
+        }
+      }
     }
 
     // if this new object falls inside self, make sure its lifetime is proper
@@ -594,7 +630,7 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
     if (!NoImplicit(&ctxt))
       ctxt.fFlags |= CallContext::kAllowImplicit; // no two rounds needed
     PyObject* result = methods[0]->Call(im_self, args, nargsf, kwds, &ctxt);
-    return HandleReturn(pymeth, im_self, result);
+    return HandleReturn(pymeth, im_self, result, args, nargsf);
   }
 
   // otherwise, handle overloading
@@ -617,7 +653,7 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
       ctxt.fFlags |= CallContext::kAllowImplicit;
     PyObject* result = memoized_pc->Call(im_self, args, nargsf, kwds, &ctxt);
     if (result)
-      return HandleReturn(pymeth, im_self, result);
+      return HandleReturn(pymeth, im_self, result, args, nargsf);
 
     // fall through: python is dynamic, and so, the hashing isn't infallible
     ctxt.fFlags &= ~(CallContext::kAllowImplicit | CallContext::kPyException |
@@ -665,7 +701,7 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
           }
         }
 
-        return HandleReturn(pymeth, im_self, result);
+        return HandleReturn(pymeth, im_self, result, args, nargsf);
       }
 
       // else failure ..
