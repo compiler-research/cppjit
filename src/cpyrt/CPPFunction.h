@@ -15,6 +15,11 @@ public:
   PyObject* GetTypeName() override;
 
 public:
+  // A free function takes its object as a plain first parameter, so it has no
+  // implicit this slot. The shift of a bound call stays the one of CPPMethod,
+  // as AdjustSelf() puts self in that first parameter.
+  Py_ssize_t GetDeallocParamShift() override { return 0; }
+
   PyCallable* Clone() override { return new CPPFunction(*this); }
   PyObject* Call(CPPInstance*& self, cpyrt_PyArgs_t args, size_t nargsf,
                  PyObject* kwds, CallContext* ctxt = nullptr) override;
