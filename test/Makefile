@@ -10,6 +10,7 @@ dictnames = advancedcpp \
             doc_helper \
             example01 \
             fragile \
+            memory_analysis \
             operators \
             overloads \
             pythonizables \

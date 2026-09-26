@@ -161,4 +161,12 @@ def _jit_resolves_std_filesystem():
 
 
 CAN_JIT_STD_FILESYSTEM = _jit_resolves_std_filesystem()
+IS_CLANG_LT_22 = (
+    cppjit.evaluate("""#if __clang_major__ < 22
+                                            true
+                                            #else
+                                            false
+                                            #endif\n""")
+    == 1
+)
 IS_VALGRIND = True if os.getenv("IS_VALGRIND") else False
