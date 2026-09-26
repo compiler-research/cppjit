@@ -55,6 +55,42 @@ jobs:
       valgrind: ${{ matrix.vg || false }}
       run-xfail-crashing-tests: true
 
+  # Each developer flow -- the pinned default and the CPPINTEROP_SOURCE_DIR and
+  # CppInterOp_DIR overrides -- must configure a persistent build directory
+  # twice without failing. A failed find_package caches <pkg>_DIR as -NOTFOUND,
+  # and the reconfigure reads that as unset and searches again.
+  reconfigure:
+    name: reconfigure/ubuntu-24.04/llvm22
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: compiler-research/ci-workflows/actions/setup-llvm@main
+        with:
+          version: '22'
+          os: ubuntu-24.04
+      - name: Prepare a CppInterOp for the override flows
+        run: |
+          pin=$(sed -n 's/.*CPPINTEROP_GIT_TAG "\([0-9a-f]*\)".*/\1/p' CMakeLists.txt)
+          git clone https://github.com/compiler-research/CppInterOp.git "$RUNNER_TEMP/cppinterop"
+          git -C "$RUNNER_TEMP/cppinterop" checkout "$pin"
+          # Configure only, so CppInterOp_DIR resolves to a package config.
+          cmake -S "$RUNNER_TEMP/cppinterop" -B "$RUNNER_TEMP/cppinterop-build" \
+            -DLLVM_DIR="$LLVM_DIR" -DClang_DIR="$Clang_DIR" -DBUILD_SHARED_LIBS=ON
+      - name: Configure each developer flow twice
+        run: |
+          # Default: CppInterOp pinned and fetched into the build tree.
+          cmake -S . -B build-default -DLLVM_DIR="$LLVM_DIR"
+          cmake -S . -B build-default -DLLVM_DIR="$LLVM_DIR"
+          # Override: a local CppInterOp source checkout.
+          cmake -S . -B build-source -DLLVM_DIR="$LLVM_DIR" -DCPPINTEROP_SOURCE_DIR="$RUNNER_TEMP/cppinterop"
+          cmake -S . -B build-source -DLLVM_DIR="$LLVM_DIR" -DCPPINTEROP_SOURCE_DIR="$RUNNER_TEMP/cppinterop"
+          # Override: an existing CppInterOp build.
+          cmake -S . -B build-external -DLLVM_DIR="$LLVM_DIR" -DCppInterOp_DIR="$RUNNER_TEMP/cppinterop-build/lib/cmake/CppInterOp"
+          cmake -S . -B build-external -DLLVM_DIR="$LLVM_DIR" -DCppInterOp_DIR="$RUNNER_TEMP/cppinterop-build/lib/cmake/CppInterOp"
+
   report:
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: build-test

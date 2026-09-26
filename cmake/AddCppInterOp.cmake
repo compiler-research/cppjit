@@ -34,8 +34,9 @@ else()
 endif()
 
 function(cppjit_add_cppinterop)
-    # An explicit CppInterOp_DIR is authoritative, like LLVM_DIR below.
-    if(DEFINED CppInterOp_DIR)
+    # An explicit CppInterOp_DIR is authoritative, like LLVM_DIR below. A
+    # failed find_package caches it as -NOTFOUND, which if() reads as unset.
+    if(CppInterOp_DIR)
         find_package(CppInterOp CONFIG REQUIRED PATHS "${CppInterOp_DIR}" NO_DEFAULT_PATH)
     else()
         find_package(CppInterOp CONFIG QUIET)
@@ -71,7 +72,7 @@ function(cppjit_add_cppinterop)
             "CppInterOp: external ${CPPINTEROP_VERSION} (LLVM ${CPPINTEROP_LLVM_VERSION}) "
             "at ${CPPINTEROP_LIBRARIES}")
     else()
-        if(DEFINED LLVM_DIR)
+        if(LLVM_DIR)
             # An explicit LLVM_DIR is authoritative: fail instead of falling back to a
             # different LLVM than the one requested. A failed find_package resets
             # LLVM_DIR to -NOTFOUND, so keep the requested value for the message.
@@ -104,7 +105,7 @@ function(cppjit_add_cppinterop)
                 "${CPPJIT_LLVM_VERSION_MIN}-${CPPJIT_LLVM_VERSION_MAX}")
         endif()
 
-        if(DEFINED Clang_DIR)
+        if(Clang_DIR)
             # An explicit Clang_DIR is authoritative, like LLVM_DIR above.
             set(_clang_dir_arg "${Clang_DIR}")
             find_package(Clang CONFIG PATHS "${Clang_DIR}" NO_DEFAULT_PATH)
