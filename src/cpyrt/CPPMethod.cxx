@@ -85,6 +85,8 @@ inline void cpyrt::CPPMethod::Copy_(const CPPMethod& /* other */) {
   fExecutor = nullptr;
   fArgIndices = nullptr;
   fArgsRequired = -1;
+  fAllocType.reset();
+  fDeallocType.reset();
 }
 
 //----------------------------------------------------------------------------
@@ -702,6 +704,37 @@ PyObject* cpyrt::CPPMethod::GetArgDefault(int iarg, bool silent) {
 }
 
 bool cpyrt::CPPMethod::IsConst() { return interop::IsConstMethod(GetMethod()); }
+
+//----------------------------------------------------------------------------
+interop::AllocType cpyrt::CPPMethod::GetAllocBehaviour() {
+  if (fAllocType.has_value())
+    return *fAllocType;
+  interop::TCppMethod_t method = GetMethod();
+  if (!method) {
+    fAllocType = interop::AllocType::None;
+    return interop::AllocType::None;
+  }
+  if (!IsPointerType(interop::GetMethodReturnType(method))) {
+    fAllocType = interop::AllocType::None;
+    return interop::AllocType::None;
+  }
+  interop::AllocType attrResult = interop::IsAllocator(method);
+  fAllocType = attrResult;
+  return attrResult;
+}
+
+//----------------------------------------------------------------------------
+interop::DeallocType cpyrt::CPPMethod::GetDeallocBehaviour(size_t index) {
+  if (!fDeallocType) {
+    fDeallocType.emplace();
+    if (interop::TCppMethod_t method = GetMethod())
+      interop::IsDeallocator(method, *fDeallocType);
+  }
+  if (index < fDeallocType->size()) {
+    return (*fDeallocType)[index];
+  }
+  return interop::DeallocType::Opaque;
+}
 
 //----------------------------------------------------------------------------
 PyObject* cpyrt::CPPMethod::GetScopeProxy() {

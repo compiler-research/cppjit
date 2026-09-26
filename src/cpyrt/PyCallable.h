@@ -37,6 +37,22 @@ public:
   virtual PyObject* GetCoVarNames() = 0;
   virtual PyObject* GetArgDefault(int /* iarg */, bool silent = true) = 0;
   virtual bool IsConst() { return false; }
+  virtual interop::AllocType GetAllocBehaviour() {
+    return interop::AllocType::None;
+  }
+  virtual interop::DeallocType GetDeallocBehaviour(size_t /* index */) {
+    return interop::DeallocType::Opaque;
+  }
+  // shift that turns a place in the args array into a GetDeallocBehaviour()
+  // slot, which the shape of the call decides
+  virtual Py_ssize_t GetDeallocArgShift(bool /* isBound */,
+                                        PyObject* const* /* args */,
+                                        Py_ssize_t /* nargs */) {
+    return 0;
+  }
+  // shift that turns a declared parameter index into a GetDeallocBehaviour()
+  // slot, which the declaration decides
+  virtual Py_ssize_t GetDeallocParamShift() { return 0; }
 
   virtual PyObject* GetScopeProxy() = 0;
   virtual interop::TCppFuncAddr_t GetFunctionAddress() = 0;

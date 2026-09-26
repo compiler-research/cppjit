@@ -142,14 +142,23 @@ static inline void ResetCallState(CPPInstance* descr_self,
 
 // helper to factor out return logic of mp_call / mp_vectorcall
 static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
-                                     PyObject* result) {
+                                     PyObject* result, PyCallable* method,
+                                     bool isBound, PyObject* const* args,
+                                     size_t nargsf, PyObject* kwds) {
   // special case for python exceptions, propagated through C++ layer
   if (result) {
     CPPInstance* cppres =
         (CPPInstance*)(CPPInstance_Check(result) ? result : nullptr);
 
+    interop::AllocType AT = method->GetAllocBehaviour();
+    // the overloads of a group share fMethodInfo, so the answer of this one
+    // stays in a local instead of going into the shared flags
+    const bool allocates = AT != interop::AllocType::None &&
+                           AT != interop::AllocType::Null &&
+                           AT != interop::AllocType::Unknown;
+
     // if this method creates new objects, always take ownership
-    if (IsCreator(pymeth->fMethodInfo->fFlags)) {
+    if (allocates || IsCreator(pymeth->fMethodInfo->fFlags)) {
 
       // either be a constructor with a fresh object proxy self ...
       if (IsConstructor(pymeth->fMethodInfo->fFlags)) {
@@ -158,9 +167,76 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
       }
 
       // ... or be a regular method with an object proxy return value
-      else if (cppres)
+      else if (cppres) {
         cppres->PythonOwns();
+        // After giving ownership, set proper flags to indicate allocation
+        // method/func
+        switch (AT) {
+        case interop::AllocType::Malloc:
+          cppres->fFlags |= CPPInstance::kIsMalloc;
+          break;
+        case interop::AllocType::NewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          break;
+        case interop::AllocType::OperatorNew:
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        case interop::AllocType::OperatorNewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        default:
+          break;
+        }
+      }
     }
+
+    // an argument that the called function releases belongs to C++ from now
+    // on, else Python frees it a second time
+    const Py_ssize_t nargs = cpyrt_PyArgs_GET_SIZE(args, nargsf);
+    const Py_ssize_t numKwds =
+        kwds && PyTuple_CheckExact(kwds) ? PyTuple_GET_SIZE(kwds) : 0;
+    // the keyword values follow the positional ones in call order, so their
+    // names are what tell which parameter each one belongs to
+    PyObject* argnames = numKwds ? method->GetSignatureNames() : nullptr;
+    // a place in the array becomes a slot with this shift
+    const Py_ssize_t argShift =
+        method->GetDeallocArgShift(isBound, args, nargs);
+    // a parameter index becomes a slot with this one
+    const Py_ssize_t paramShift = method->GetDeallocParamShift();
+    // the array holds the positional values first, then the keyword ones
+    for (Py_ssize_t i = 0; i < nargs + numKwds; i++) {
+      // only a C++ object can hold memory that the callee releases
+      if (!CPPInstance_Check(args[i]))
+        continue;
+
+      Py_ssize_t slot = -1; // no slot of its own
+      if (i < nargs)
+        slot = i + argShift;
+      else {
+        // kwds runs parallel to the keyword part of the array
+        const char* kwname =
+            PyUnicode_AsUTF8(PyTuple_GET_ITEM(kwds, i - nargs));
+        // the place of the name in the signature is the parameter index
+        for (Py_ssize_t iarg = 0; iarg < PyTuple_GET_SIZE(argnames); iarg++) {
+          if (PyUnicode_CompareWithASCIIString(PyTuple_GET_ITEM(argnames, iarg),
+                                               kwname) == 0) {
+            slot = iarg + paramShift;
+            break;
+          }
+        }
+      }
+      // the callee drops this argument, or no name of it matches a parameter
+      if (slot < 0)
+        continue;
+
+      const interop::DeallocType DT = method->GetDeallocBehaviour((size_t)slot);
+      if (DT == interop::DeallocType::None ||
+          DT == interop::DeallocType::Opaque)
+        continue;
+      ((CPPInstance*)args[i])->CppOwns();
+    }
+    Py_XDECREF(argnames);
 
     // if this new object falls inside self, make sure its lifetime is proper
     if (!(pymeth->fMethodInfo->fFlags & CallContext::kNeverLifeLine)) {
@@ -553,6 +629,10 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
 
   CPPInstance* im_self = pymeth->fSelf;
 
+  // self is passed to Call() by reference and ProcessArgs() writes to it when
+  // it takes self from args, so record the bound state before the call
+  const bool isBound = im_self != nullptr;
+
   // get local handles to proxy internals
   auto& methods = pymeth->fMethodInfo->fMethods;
 
@@ -576,7 +656,8 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
     if (!NoImplicit(&ctxt))
       ctxt.fFlags |= CallContext::kAllowImplicit; // no two rounds needed
     PyObject* result = methods[0]->Call(im_self, args, nargsf, kwds, &ctxt);
-    return HandleReturn(pymeth, im_self, result);
+    return HandleReturn(pymeth, im_self, result, methods[0], isBound, args,
+                        nargsf, kwds);
   }
 
   // otherwise, handle overloading
@@ -599,7 +680,8 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
       ctxt.fFlags |= CallContext::kAllowImplicit;
     PyObject* result = memoized_pc->Call(im_self, args, nargsf, kwds, &ctxt);
     if (result)
-      return HandleReturn(pymeth, im_self, result);
+      return HandleReturn(pymeth, im_self, result, memoized_pc, isBound, args,
+                          nargsf, kwds);
 
     // fall through: python is dynamic, and so, the hashing isn't infallible
     ctxt.fFlags &= ~(CallContext::kAllowImplicit | CallContext::kPyException |
@@ -656,7 +738,8 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
           }
         }
 
-        return HandleReturn(pymeth, im_self, result);
+        return HandleReturn(pymeth, im_self, result, methods[i], isBound, args,
+                            nargsf, kwds);
       }
 
       // else failure ..
