@@ -139,9 +139,9 @@ IS_CPP23 = (
 
 def _jit_resolves_std_filesystem():
     # The JIT resolves std::filesystem against the loaded libstdc++.so, not
-    # the compile headers -- a manylinux image (gcc-toolset headers over a
-    # GCC-8 base runtime) compiles the include yet dies resolving the
-    # symbols. That failure is a fatal JIT error, so ask in a child process.
+    # the compile headers. A manylinux image (gcc-toolset headers over a
+    # GCC-8 base runtime) compiles the include yet cannot resolve the
+    # symbols. A child process keeps the probe out of the test process.
     probe = (
         "import cppjit\n"
         'cppjit.cppdef("""#include <filesystem>\n'

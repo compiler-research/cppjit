@@ -173,6 +173,14 @@ RPY_EXPORTED
 TCppObject_t CallO(TCppMethod_t method, TCppObject_t self, size_t nargs,
                    void* args, TCppType_t result_type);
 
+// why the most recent call on this thread returned no result
+enum ECallFailure { kCallCompleted = 0, kUnsizableReturn, kWrapperJitFailed };
+RPY_EXPORTED
+ECallFailure LastCallFailure();
+// the JIT's report behind kWrapperJitFailed, with symbol names demangled
+RPY_EXPORTED
+std::string LastCallFailureReport();
+
 RPY_EXPORTED
 TCppFuncAddr_t GetFunctionAddress(TCppMethod_t method,
                                   bool check_enabled = true);

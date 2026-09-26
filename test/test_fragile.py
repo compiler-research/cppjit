@@ -526,7 +526,6 @@ class TestFRAGILE:
 
         assert capture.str() == "Hello, World\n"
 
-    @mark.xfail(condition=IS_CLANG_REPL, reason="Fails with ClangRepl")
     def test21_failing_cppcode(self):
         """Check error behavior of failing C++ code"""
 

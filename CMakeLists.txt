@@ -97,6 +97,16 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     target_link_options(cppjit PRIVATE -Wl,-Bsymbolic-functions)
 endif()
 
+# Symbols pulled in from static archives, the toolchain's
+# libstdc++_nonshared and libgcc, stay out of the dynamic symbol table.
+# Without this a manylinux wheel exports the gcc-toolset copies of
+# std::filesystem. The JIT then resolves against them instead of the
+# host runtime and the process crashes on an older libstdc++. Both GNU
+# ld and lld accept the flag.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(cppjit PRIVATE -Wl,--exclude-libs,ALL)
+endif()
+
 # macOS needs to allow undefined Python symbols
 if(APPLE)
     set_target_properties(cppjit PROPERTIES

@@ -106,6 +106,8 @@ PyObject* PyStyleIndex(PyObject* self, PyObject* index) {
     return nullptr;
 
   Py_ssize_t size = PySequence_Size(self);
+  if (size == -1 && PyErr_Occurred())
+    return nullptr;
   if (idx >= size || (idx < 0 && idx < -size)) {
     PyErr_SetString(PyExc_IndexError, "index out of range");
     return nullptr;
@@ -329,6 +331,8 @@ static bool FillVector(PyObject* vecin, PyObject* args, ItemGetter* getter) {
   if (0 < sz) {
     PyObject* res =
         PyObject_CallMethod(vecin, (char*)"reserve", (char*)"n", sz);
+    if (!res)
+      return false;
     Py_DECREF(res);
   } else // i.e. sz == 0, so empty container: done
     return true;
@@ -551,7 +555,13 @@ PyObject* VectorData(PyObject* self, PyObject*) {
 //---------------------------------------------------------------------------
 PyObject* VectorArray(PyObject* self, PyObject* args, PyObject* kwargs) {
   PyObject* pydata = VectorData(self, nullptr);
+  if (!pydata)
+    return nullptr;
   PyObject* arrcall = PyObject_GetAttr(pydata, PyStrings::gArray);
+  if (!arrcall) {
+    Py_DECREF(pydata);
+    return nullptr;
+  }
   PyObject* newarr = PyObject_Call(arrcall, args, kwargs);
   Py_DECREF(arrcall);
   Py_DECREF(pydata);
@@ -634,11 +644,15 @@ static PyObject* vector_iter(PyObject* v) {
     }
 
     PyObject* pydata = CallPyObjMethod(v, "__real_data");
-    if (!pydata || Utility::GetBuffer(pydata, '*', 1, vi->vi_data, false) == 0)
+    if (!pydata) {
+      Py_DECREF((PyObject*)vi);
+      return nullptr;
+    }
+    if (Utility::GetBuffer(pydata, '*', 1, vi->vi_data, false) == 0)
       vi->vi_data = CPPInstance_Check(pydata)
                         ? ((CPPInstance*)pydata)->GetObjectRaw()
                         : nullptr;
-    Py_XDECREF(pydata);
+    Py_DECREF(pydata);
 
   } else {
     PyErr_Clear();
@@ -653,6 +667,10 @@ static PyObject* vector_iter(PyObject* v) {
 
   vi->ii_pos = 0;
   vi->ii_len = PySequence_Size(v);
+  if (vi->ii_len == -1 && PyErr_Occurred()) {
+    Py_DECREF((PyObject*)vi);
+    return nullptr;
+  }
 
   PyObject_GC_Track(vi);
   return (PyObject*)vi;
@@ -668,12 +686,18 @@ PyObject* VectorGetItem(CPPInstance* self, PySliceObject* index) {
 
     PyObject* pyclass = (PyObject*)Py_TYPE((PyObject*)self);
     PyObject* nseq = PyObject_CallObject(pyclass, nullptr);
+    if (!nseq)
+      return nullptr;
 
     Py_ssize_t start, stop, step;
     PySlice_GetIndices((cpyrt_PySliceCast)index,
                        PyObject_Length((PyObject*)self), &start, &stop, &step);
 
     const Py_ssize_t nlen = PySequence_Size((PyObject*)self);
+    if (nlen == -1 && PyErr_Occurred()) {
+      Py_DECREF(nseq);
+      return nullptr;
+    }
     if (!AdjustSlice(nlen, start, stop, step))
       return nseq;
 
@@ -682,9 +706,18 @@ PyObject* VectorGetItem(CPPInstance* self, PySliceObject* index) {
       PyObject* pyidx = PyInt_FromSsize_t(i);
       PyObject* item = PyObject_CallMethodOneArg((PyObject*)self,
                                                  PyStrings::gGetNoCheck, pyidx);
-      CallPyObjMethod(nseq, "push_back", item);
-      Py_DECREF(item);
       Py_DECREF(pyidx);
+      if (!item) {
+        Py_DECREF(nseq);
+        return nullptr;
+      }
+      PyObject* pbres = CallPyObjMethod(nseq, "push_back", item);
+      Py_DECREF(item);
+      if (!pbres) {
+        Py_DECREF(nseq);
+        return nullptr;
+      }
+      Py_DECREF(pbres);
     }
 
     return nseq;
@@ -713,11 +746,17 @@ PyObject* VectorBoolGetItem(CPPInstance* self, PyObject* idx) {
   if (PySlice_Check(idx)) {
     PyObject* pyclass = (PyObject*)Py_TYPE((PyObject*)self);
     PyObject* nseq = PyObject_CallObject(pyclass, nullptr);
+    if (!nseq)
+      return nullptr;
 
     Py_ssize_t start, stop, step;
     PySlice_GetIndices((cpyrt_PySliceCast)idx, PyObject_Length((PyObject*)self),
                        &start, &stop, &step);
     const Py_ssize_t nlen = PySequence_Size((PyObject*)self);
+    if (nlen == -1 && PyErr_Occurred()) {
+      Py_DECREF(nseq);
+      return nullptr;
+    }
     if (!AdjustSlice(nlen, start, stop, step))
       return nseq;
 
@@ -726,9 +765,18 @@ PyObject* VectorBoolGetItem(CPPInstance* self, PyObject* idx) {
       PyObject* pyidx = PyInt_FromSsize_t(i);
       PyObject* item = PyObject_CallMethodOneArg((PyObject*)self,
                                                  PyStrings::gGetItem, pyidx);
-      CallPyObjMethod(nseq, "push_back", item);
-      Py_DECREF(item);
       Py_DECREF(pyidx);
+      if (!item) {
+        Py_DECREF(nseq);
+        return nullptr;
+      }
+      PyObject* pbres = CallPyObjMethod(nseq, "push_back", item);
+      Py_DECREF(item);
+      if (!pbres) {
+        Py_DECREF(nseq);
+        return nullptr;
+      }
+      Py_DECREF(pbres);
     }
 
     return nseq;
@@ -803,15 +851,24 @@ PyObject* ArrayInit(PyObject* self, PyObject* args, PyObject* /* kwds */) {
 
     PyObject* items = PyTuple_GET_ITEM(args, 0);
     Py_ssize_t fillsz = PySequence_Size(items);
-    if (PySequence_Size(self) != fillsz) {
+    Py_ssize_t selfsz = PySequence_Size(self);
+    if (selfsz == -1 && PyErr_Occurred()) {
+      Py_DECREF(result);
+      return nullptr;
+    }
+    if (selfsz != fillsz) {
       PyErr_Format(PyExc_ValueError,
                    "received sequence of size %zd where %zd expected", fillsz,
-                   PySequence_Size(self));
+                   selfsz);
       Py_DECREF(result);
       return nullptr;
     }
 
     PyObject* si_call = PyObject_GetAttr(self, PyStrings::gSetItem);
+    if (!si_call) {
+      Py_DECREF(result);
+      return nullptr;
+    }
     for (Py_ssize_t i = 0; i < fillsz; ++i) {
       PyObject* item = PySequence_GetItem(items, i);
       PyObject* index = PyInt_FromSsize_t(i);
@@ -851,6 +908,10 @@ static PyObject* MapFromPairs(PyObject* self, PyObject* pairs) {
     return nullptr;
 
   PyObject* si_call = PyObject_GetAttr(self, PyStrings::gSetItem);
+  if (!si_call) {
+    Py_DECREF(result);
+    return nullptr;
+  }
   for (Py_ssize_t i = 0; i < PySequence_Size(pairs); ++i) {
     PyObject* pair = PySequence_GetItem(pairs, i);
     PyObject* sires = nullptr;
@@ -1095,6 +1156,10 @@ static PyObject* index_iter(PyObject* c) {
   ii->ii_container = c;
   ii->ii_pos = 0;
   ii->ii_len = PySequence_Size(c);
+  if (ii->ii_len == -1 && PyErr_Occurred()) {
+    Py_DECREF((PyObject*)ii);
+    return nullptr;
+  }
 
   PyObject_GC_Track(ii);
   return (PyObject*)ii;
@@ -1429,6 +1494,8 @@ Py_hash_t STLStringHash(PyObject* self) {
   // std::string objects hash to the same values as Python strings to allow
   // matches in dictionaries etc.
   PyObject* data = STLStringGetData(self, false);
+  if (!data)
+    return -1;
   Py_hash_t h = cpyrt_PyText_Type.tp_hash(data);
   Py_DECREF(data);
   return h;

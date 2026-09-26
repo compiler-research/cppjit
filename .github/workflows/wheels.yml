@@ -135,6 +135,42 @@ jobs:
           pip install dist/cppjit-*cp314*.whl -r requirements.txt
           bash .github/wheel_test.sh
 
+  # Runtime skew: the manylinux wheel is built with gcc-toolset headers
+  # over a GCC 8 base runtime, and AlmaLinux 8 with its own gcc-c++ is
+  # that runtime. <filesystem> parses there but its symbols are absent
+  # from the loaded libstdc++, so the JIT must fail with an exception
+  # instead of taking the process down. The distribution has no python
+  # 3.14, so a pinned uv supplies the interpreter for the cp314 wheel.
+  # The label guard reaches this job through needs.
+  test-old-libstdcxx:
+    name: test old libstdc++ (almalinux:8)
+    needs: wheels
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: wheels-manylinux-x86_64
+          path: dist
+
+      - name: Install the cp314 wheel and run the runtime-skew tests
+        run: |
+          docker run --rm -v "$PWD":/src -w /src -e PYTHONSAFEPATH=1 \
+              almalinux:8 bash -ec '
+              dnf -y -q install gcc-c++ make python3.12 python3.12-pip
+              python3.12 -m pip install -q "uv==0.11.14"
+              uv python install 3.14
+              uv venv -q --python 3.14 /venv
+              . /venv/bin/activate
+              uv pip install -q dist/cppjit-*cp314*.whl -r requirements.txt
+              python -X faulthandler .github/wheel_smoke.py
+              python -m pytest -v -rs test/test_api.py::TestJITERRORS \
+                  test/test_fragile.py::TestFRAGILE::test21_failing_cppcode \
+                  test/test_regression.py::TestREGRESSION::test35_filesytem'
+
   sdist:
     name: sdist
     if: *label-guard

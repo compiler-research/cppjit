@@ -11,6 +11,8 @@ using namespace cppjit;
 #include "Utility.h"
 #include "cppjit_interop.h"
 
+#include "cpyrt/PyException.h"
+
 // Standard
 #include <complex>
 #include <cstring>
@@ -33,43 +35,68 @@ extern std::set<std::string> gIteratorTypes;
 //- helpers ------------------------------------------------------------------
 namespace {
 
-#ifdef WITH_THREAD
-class GILControl {
+// releases the GIL around a call when the call context asks for it
+class GILRelease {
 public:
-  GILControl() : fSave(PyEval_SaveThread()) {}
-  ~GILControl() { PyEval_RestoreThread(fSave); }
+  GILRelease(cpyrt::CallContext* ctxt) : fSave(nullptr) {
+#ifdef WITH_THREAD
+    if (ReleasesGIL(ctxt))
+      fSave = PyEval_SaveThread();
+#endif
+  }
+  ~GILRelease() {
+    if (fSave)
+      PyEval_RestoreThread(fSave);
+  }
 
 private:
   PyThreadState* fSave;
 };
-#endif
+
+// A call whose wrapper the JIT could not compile returns nothing. Raise for
+// every return type alike, with the JIT's report. An unsizable return type
+// leaves the record to the executor that expected the temporary.
+inline void RaiseOnCallFailure(interop::TCppMethod_t method) {
+  if (interop::LastCallFailure() != interop::kWrapperJitFailed)
+    return;
+  std::string proto = interop::GetName(interop::TCppScope_t(method.data)) +
+                      interop::GetMethodSignature(method, true);
+  if (!interop::IsConstructor(method))
+    proto = interop::GetMethodReturnTypeAsString(method) + " " + proto;
+  std::string report = interop::LastCallFailureReport();
+  PyErr_Format(PyExc_RuntimeError,
+               "failed to JIT-compile the call wrapper for '%s'%s%s",
+               proto.c_str(), report.empty() ? "" : ":\n", report.c_str());
+  throw cpyrt::PyException();
+}
 
 } // unnamed namespace
 
-#ifdef WITH_THREAD
 #define CPPJIT_IMPL_GILCALL(rtype, tcode)                                      \
   static inline rtype GILCall##tcode(interop::TCppMethod_t method,             \
                                      interop::TCppObject_t self,               \
                                      cpyrt::CallContext* ctxt) {               \
-    if (!ReleasesGIL(ctxt))                                                    \
-      return interop::Call##tcode(method, self, ctxt->GetEncodedSize(),        \
-                                  ctxt->GetArgs());                            \
-    GILControl gc{};                                                           \
-    return interop::Call##tcode(method, self, ctxt->GetEncodedSize(),          \
-                                ctxt->GetArgs());                              \
+    rtype result;                                                              \
+    {                                                                          \
+      GILRelease gil{ctxt};                                                    \
+      result = interop::Call##tcode(method, self, ctxt->GetEncodedSize(),      \
+                                    ctxt->GetArgs());                          \
+    }                                                                          \
+    RaiseOnCallFailure(method);                                                \
+    return result;                                                             \
   }
-#else
-#define CPPJIT_IMPL_GILCALL(rtype, tcode)                                      \
-  static inline rtype GILCall##tcode(interop::TCppMethod_t method,             \
-                                     interop::TCppObject_t self,               \
-                                     cpyrt::CallContext* ctxt) {               \
-    return interop::Call##tcode(method, self, ctxt->GetEncodedSize(),          \
-                                ctxt->GetArgs());                              \
+
+static inline void GILCallV(interop::TCppMethod_t method,
+                            interop::TCppObject_t self,
+                            cpyrt::CallContext* ctxt) {
+  {
+    GILRelease gil{ctxt};
+    interop::CallV(method, self, ctxt->GetEncodedSize(), ctxt->GetArgs());
   }
-#endif
+  RaiseOnCallFailure(method);
+}
 
 // clang-format off
-CPPJIT_IMPL_GILCALL(void,           V)
 CPPJIT_IMPL_GILCALL(unsigned char,  B)
 CPPJIT_IMPL_GILCALL(char,           C)
 CPPJIT_IMPL_GILCALL(short,          H)
@@ -87,31 +114,27 @@ static inline interop::TCppObject_t GILCallO(interop::TCppMethod_t method,
                                              cpyrt::CallContext* ctxt,
                                              interop::TCppScope_t klass) {
   interop::TCppType_t klass_ty = interop::GetTypeFromScope(klass);
-#ifdef WITH_THREAD
-  if (!ReleasesGIL(ctxt))
-#endif
-    return interop::CallO(method, self, ctxt->GetEncodedSize(), ctxt->GetArgs(),
-                          klass_ty);
-#ifdef WITH_THREAD
-  GILControl gc{};
-  return interop::CallO(method, self, ctxt->GetEncodedSize(), ctxt->GetArgs(),
-                        klass_ty);
-#endif
+  interop::TCppObject_t result;
+  {
+    GILRelease gil{ctxt};
+    result = interop::CallO(method, self, ctxt->GetEncodedSize(),
+                            ctxt->GetArgs(), klass_ty);
+  }
+  RaiseOnCallFailure(method);
+  return result;
 }
 
 static inline interop::TCppObject_t
 GILCallConstructor(interop::TCppMethod_t method, interop::TCppScope_t klass,
                    cpyrt::CallContext* ctxt) {
-#ifdef WITH_THREAD
-  if (!ReleasesGIL(ctxt))
-#endif
-    return interop::CallConstructor(method, klass, ctxt->GetEncodedSize(),
-                                    ctxt->GetArgs());
-#ifdef WITH_THREAD
-  GILControl gc{};
-  return interop::CallConstructor(method, klass, ctxt->GetEncodedSize(),
-                                  ctxt->GetArgs());
-#endif
+  interop::TCppObject_t result;
+  {
+    GILRelease gil{ctxt};
+    result = interop::CallConstructor(method, klass, ctxt->GetEncodedSize(),
+                                      ctxt->GetArgs());
+  }
+  RaiseOnCallFailure(method);
+  return result;
 }
 
 static inline PyObject* cpyrt_PyText_FromLong(long cl) {
@@ -368,7 +391,7 @@ bool cpyrt::RefExecutor::SetAssignable(PyObject* pyobject) {
                                               interop::TCppObject_t self,      \
                                               CallContext* ctxt) {             \
     type* ref = (type*)GILCallR(method, self, ctxt);                           \
-    if (!ref) { /* can happen if wrapper compilation fails */                  \
+    if (!ref) { /* a reference bound to a null address */                      \
       PyErr_SetString(PyExc_ReferenceError,                                    \
                       "attempt to access a null-pointer");                     \
       return nullptr;                                                          \
@@ -429,6 +452,10 @@ PyObject* cpyrt::STLStringRefExecutor::Execute(interop::TCppMethod_t method,
       interop::GetFullScope("std::string");
 
   std::string* result = (std::string*)GILCallR(method, self, ctxt);
+  if (!result) { // a reference bound to a null address
+    PyErr_SetString(PyExc_ReferenceError, "attempt to access a null-pointer");
+    return nullptr;
+  }
   if (!fAssignable) {
     std::string* rescp = new std::string{*result};
     return BindCppObjectNoCast((void*)rescp, sSTLStringScope,
@@ -622,9 +649,13 @@ PyObject* cpyrt::STLStringExecutor::Execute(interop::TCppMethod_t method,
       interop::GetFullScope("std::string");
   std::string* result =
       (std::string*)GILCallO(method, self, ctxt, sSTLStringScope).data;
-  if (!result)
-    result = new std::string{};
-  else if (PyErr_Occurred()) {
+  if (!result) {
+    if (!PyErr_Occurred()) // the callee may have set a python error itself
+      PyErr_SetString(PyExc_ValueError,
+                      "nullptr result where temporary expected");
+    return nullptr;
+  }
+  if (PyErr_Occurred()) {
     delete result;
     return nullptr;
   }
@@ -644,8 +675,10 @@ PyObject* cpyrt::STLWStringExecutor::Execute(interop::TCppMethod_t method,
   std::wstring* result =
       (std::wstring*)GILCallO(method, self, ctxt, sSTLWStringScope).data;
   if (!result) {
-    wchar_t w = L'\0';
-    return PyUnicode_FromWideChar(&w, 0);
+    if (!PyErr_Occurred()) // the callee may have set a python error itself
+      PyErr_SetString(PyExc_ValueError,
+                      "nullptr result where temporary expected");
+    return nullptr;
   }
 
   PyObject* pyresult = PyUnicode_FromWideChar(result->c_str(), result->size());
@@ -773,6 +806,10 @@ PyObject* cpyrt::InstancePtrPtrExecutor::Execute(interop::TCppMethod_t method,
     return BindCppObject((void*)result, fClass,
                          CPPInstance::kIsPtrPtr | CPPInstance::kIsReference);
 
+  if (!result) { // nothing to assign to
+    PyErr_SetString(PyExc_ReferenceError, "attempt to access a null-pointer");
+    return nullptr;
+  }
   CPPInstance* cppinst = (CPPInstance*)fAssignable;
   *result = cppinst->GetObject();
 
@@ -792,6 +829,10 @@ PyObject* cpyrt::InstancePtrRefExecutor::Execute(interop::TCppMethod_t method,
     return SetInstanceCheckError(fAssignable);
 
   void** result = (void**)GILCallR(method, self, ctxt);
+  if (!result) { // a reference bound to a null address
+    PyErr_SetString(PyExc_ReferenceError, "attempt to access a null-pointer");
+    return nullptr;
+  }
   if (!fAssignable)
     return BindCppObject(*result, fClass);
 

@@ -26,7 +26,13 @@ def _preload_backend_library():
         raise ImportError("cannot locate the cppjit.libcppjit extension module")
     lib = ctypes.CDLL(spec.origin, ctypes.RTLD_GLOBAL)
     if not lib.LoadCppInterOp():
-        raise RuntimeError("failed to load CppInterOp (LoadCppInterOp returned 0)")
+        raise RuntimeError(
+            "cppjit could not initialize its C++ interpreter (LoadCppInterOp "
+            "failed). The diagnostic above names the cause. When it reports a "
+            "missing standard header such as 'algorithm', no C++ toolchain is "
+            "installed: install one, for example g++ or the conda package "
+            "cxx-compiler."
+        )
     return lib
 
 

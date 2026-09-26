@@ -14,6 +14,7 @@ using namespace cppjit;
 #include "MemoryRegulator.h"
 #include "ProxyWrappers.h"
 #include "PyStrings.h"
+#include "StderrCapture.h"
 #include "TemplateProxy.h"
 #include "TupleOfInstances.h"
 #include "Utility.h"
@@ -33,6 +34,7 @@ PyObject* Instance_FromVoidPtr(void* addr, const std::string& classname,
 #include <algorithm>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -237,8 +239,6 @@ PyObject* gSegvException = nullptr;
 PyObject* gIllException = nullptr;
 PyObject* gAbrtException = nullptr;
 std::unordered_set<interop::TCppScope_t> gPinnedTypes;
-std::ostringstream gCapturedError;
-std::streambuf* gOldErrorBuffer = nullptr;
 
 std::unordered_map<std::string, std::vector<PyObject*>>& pythonizations() {
   static std::unordered_map<std::string, std::vector<PyObject*>> pyzMap;
@@ -813,25 +813,47 @@ static PyObject* AddSmartPtrType(PyObject*, PyObject* args) {
 }
 
 //----------------------------------------------------------------------------
+// The capture Python drives around Declare, Process and LoadLibrary. The
+// descriptor is process-global, as the std::cerr buffer swap it replaces
+// was, so text from other threads lands in it as well.
+static std::unique_ptr<interop::StderrCapture> gStderrCapture;
+
+static void FlushPythonStderr() {
+  // pending text of Python's own buffered stream is not the interpreter's
+  PyObject* pyerr = PySys_GetObject("stderr"); // borrowed
+  if (!pyerr || pyerr == Py_None)
+    return;
+  PyObject* result = PyObject_CallMethod(pyerr, "flush", nullptr);
+  if (!result)
+    PyErr_Clear();
+  Py_XDECREF(result);
+}
+
 static PyObject* BeginCaptureStderr(PyObject*, PyObject*) {
-  gOldErrorBuffer = std::cerr.rdbuf();
-  std::cerr.rdbuf(gCapturedError.rdbuf());
+  // a capture in progress stays as it is
+  if (!gStderrCapture) {
+    FlushPythonStderr();
+    gStderrCapture = std::make_unique<interop::StderrCapture>();
+    if (!gStderrCapture->IsActive())
+      gStderrCapture.reset(); // no temporary file: output stays visible
+  }
 
   Py_RETURN_NONE;
 }
 
 //----------------------------------------------------------------------------
 static PyObject* EndCaptureStderr(PyObject*, PyObject*) {
-  // restore old rdbuf and return captured result
-  std::cerr.rdbuf(gOldErrorBuffer);
-  gOldErrorBuffer = nullptr;
+  // Restore the descriptor and hand the text to Python. A leading newline
+  // separates it from the message the callers put in front.
+  std::string text;
+  if (gStderrCapture) {
+    text = gStderrCapture->Stop();
+    gStderrCapture.reset();
+  }
+  if (!text.empty())
+    text.insert(0, "\n");
 
-  std::string capturedError = std::move(gCapturedError).str();
-
-  gCapturedError.str("");
-  gCapturedError.clear();
-
-  return Py_BuildValue("s", capturedError.c_str());
+  return PyUnicode_DecodeUTF8(text.data(), (Py_ssize_t)text.size(), "replace");
 }
 } // unnamed namespace
 
