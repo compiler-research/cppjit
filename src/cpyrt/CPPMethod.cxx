@@ -9,7 +9,6 @@ using namespace cppjit;
 #include "Executors.h"
 #include "ProxyWrappers.h"
 #include "PyStrings.h"
-#include "SignalTryCatch.h"
 #include "TypeManip.h"
 #include "Utility.h"
 #include "cppjit_interop.h"
@@ -20,7 +19,6 @@ using namespace cppjit;
 #include <algorithm>
 #include <assert.h>
 #include <exception>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <string.h>
@@ -191,56 +189,6 @@ inline PyObject* cpyrt::CPPMethod::ExecuteFast(void* self, ptrdiff_t offset,
     result = nullptr;
   }
 #endif
-
-  return result;
-}
-
-//----------------------------------------------------------------------------
-inline PyObject* cpyrt::CPPMethod::ExecuteProtected(void* self,
-                                                    ptrdiff_t offset,
-                                                    CallContext* ctxt) {
-  // helper code to prevent some code duplication; this code embeds a
-  // "try/catch" block that saves the call environment for restoration in case
-  // of an otherwise fatal signal
-  PyObject* result = 0;
-
-  CLING_EXCEPTION_TRY { // copy call environment to be able to jump back on
-                        // signal
-    result = ExecuteFast(self, offset, ctxt);
-  }
-  CLING_EXCEPTION_CATCH(excode) {
-    // report any outstanding Python exceptions first
-    if (PyErr_Occurred()) {
-      std::cerr << "Python exception outstanding during C++ longjmp:"
-                << std::endl;
-      PyErr_Print();
-      std::cerr << std::endl;
-    }
-
-    // unfortunately, the excodes are not the ones from signal.h, but enums from
-    // TSysEvtHandler.h
-    if (excode == 0)
-      PyErr_SetString(gBusException,
-                      "bus error in C++; program state was reset");
-    else if (excode == 1)
-      PyErr_SetString(gSegvException,
-                      "segfault in C++; program state was reset");
-    else if (excode == 4)
-      PyErr_SetString(gIllException,
-                      "illegal instruction in C++; program state was reset");
-    else if (excode == 5)
-      PyErr_SetString(gAbrtException,
-                      "abort from C++; program state was reset");
-    else if (excode == 12)
-      PyErr_SetString(
-          PyExc_FloatingPointError,
-          "floating point exception in C++; program state was reset");
-    else
-      PyErr_SetString(PyExc_SystemError,
-                      "problem in C++; program state was reset");
-    result = 0;
-  }
-  CLING_EXCEPTION_ENDTRY;
 
   return result;
 }
@@ -1015,18 +963,10 @@ bool cpyrt::CPPMethod::ConvertAndSetArgs(cpyrt_PyArgs_t args, size_t nargsf,
 //----------------------------------------------------------------------------
 PyObject* cpyrt::CPPMethod::Execute(void* self, ptrdiff_t offset,
                                     CallContext* ctxt) {
-  // call the interface method
-  PyObject* result = 0;
-
-  if (CallContext::sSignalPolicy != CallContext::kProtected &&
-      !(ctxt->fFlags & CallContext::kProtected)) {
-    // bypasses try block (i.e. segfaults will abort)
-    result = ExecuteFast(self, offset, ctxt);
-  } else {
-    // at the cost of ~10% performance, don't abort the interpreter on any
-    // signal
-    result = ExecuteProtected(self, offset, ctxt);
-  }
+  // call the interface method; the kProtected signal policy is accepted for
+  // API compatibility but has no separate path: without a signal handler
+  // that longjmps back into the call there is nothing to protect
+  PyObject* result = ExecuteFast(self, offset, ctxt);
 
   if (!result && PyErr_Occurred())
     SetPyError_(0);

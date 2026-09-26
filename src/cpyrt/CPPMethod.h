@@ -101,7 +101,6 @@ private:
   bool VerifyArgCount_(Py_ssize_t);
 
   PyObject* ExecuteFast(void*, ptrdiff_t, CallContext*);
-  PyObject* ExecuteProtected(void*, ptrdiff_t, CallContext*);
 
   bool InitConverters_();
 
