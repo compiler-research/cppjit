@@ -184,7 +184,7 @@ static void configureInterpreter(const InterOpPaths& Paths) {
   Cpp::LoadLibrary("libstdc++", /* lookup= */ true);
 }
 
-static void preloadHeaders() {
+static bool preloadHeaders() {
   const char* code = "#include <algorithm>\n"
                      "#include <numeric>\n"
                      "#include <complex>\n"
@@ -209,7 +209,7 @@ static void preloadHeaders() {
                      "#include <optional>\n"
                      "#endif\n"
                      "#include <CppInterOp/Dispatch.h>\n";
-  Cpp::Process(code);
+  return Cpp::Process(code) == 0;
 }
 
 static void defineRuntimeHelpers() {
@@ -246,9 +246,18 @@ extern "C" int LoadCppInterOp() {
     if (!loadDispatchAPI(Paths))
       return;
 
-    acquireOrCreateInterpreter(Paths);
+    if (!acquireOrCreateInterpreter(Paths)) {
+      std::cerr << "[cppjit] Failed to create the C++ interpreter" << std::endl;
+      return;
+    }
     configureInterpreter(Paths);
-    preloadHeaders();
+    if (!preloadHeaders()) {
+      std::cerr << "[cppjit] The C++ standard headers do not parse, see the "
+                   "diagnostic above. Install a C++ toolchain such as g++ or "
+                   "the conda package cxx-compiler."
+                << std::endl;
+      return;
+    }
     defineRuntimeHelpers();
 
     Loaded = 1;
