@@ -754,13 +754,26 @@ interop::TCppScope_t interop::GetActualClass(TCppScope_t klass,
   if (!Cpp::IsClassPolymorphic(klass))
     return klass;
 
+  // This is hit for every polymorphic object handed to Python, and the name
+  // lookups below cost microseconds, so their outcomes are memoized. Keyed on
+  // (static class, dynamic type). Only outcomes that cannot change later are
+  // cached; a failed lookup may succeed once more declarations are available,
+  // so failures are retried.
+  static std::map<std::pair<const void*, const std::type_info*>, TCppScope_t>
+      s_actual_class_cache;
   const std::type_info* typ = &typeid(*(AutoCastRTTI*)obj.data);
+  const auto cacheKey = std::make_pair((const void*)klass.data, typ);
+  auto cached = s_actual_class_cache.find(cacheKey);
+  if (cached != s_actual_class_cache.end())
+    return cached->second;
 
   std::string mangled_name = typ->name();
   std::string demangled_name = Cpp::Demangle(mangled_name);
 
-  if (TCppScope_t scope = interop::GetScope(demangled_name))
+  if (TCppScope_t scope = interop::GetScope(demangled_name)) {
+    s_actual_class_cache.emplace(cacheKey, scope);
     return scope;
+  }
 
   return klass;
 }
@@ -1180,10 +1193,32 @@ ptrdiff_t interop::GetBaseOffset(TCppScope_t derived, TCppScope_t base,
                                  TCppObject_t /*address*/, int direction,
                                  bool rerror) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
-  intptr_t offset = Cpp::GetBaseClassOffset(derived, base);
 
-  if (offset == -1) // Cling error, treat silently
-    return rerror ? (ptrdiff_t)offset : 0;
+  // Queried for every downcast object handed to Python; computing it walks
+  // the inheritance paths, so memoize per class pair. The object address is
+  // not used, so the offset is fixed per pair once both records are complete.
+  static std::map<std::pair<const void*, const void*>, intptr_t>
+      s_base_offset_cache;
+  const auto cacheKey = std::make_pair(derived.data, base.data);
+  auto cached = s_base_offset_cache.find(cacheKey);
+  intptr_t offset = 0;
+  if (cached != s_base_offset_cache.end()) {
+    offset = cached->second;
+  } else {
+    // An incomplete record has no walkable bases (GetBaseClassOffset would
+    // read an empty base path), and the answer may change once the
+    // definition is loaded, so treat it like the error case below and retry
+    // next time instead of caching.
+    if (!Cpp::IsComplete(derived) || !Cpp::IsComplete(base))
+      return rerror ? (ptrdiff_t)-1 : 0;
+
+    offset = Cpp::GetBaseClassOffset(derived, base);
+
+    if (offset == -1) // Cling error, treat silently
+      return rerror ? (ptrdiff_t)offset : 0;
+
+    s_base_offset_cache.emplace(cacheKey, offset);
+  }
 
   return (ptrdiff_t)(direction < 0 ? -offset : offset);
 }
