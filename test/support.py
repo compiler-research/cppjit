@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import ctypes
 import os
 import shutil
 import subprocess
@@ -162,3 +163,24 @@ def _jit_resolves_std_filesystem():
 
 CAN_JIT_STD_FILESYSTEM = _jit_resolves_std_filesystem()
 IS_VALGRIND = True if os.getenv("IS_VALGRIND") else False
+
+
+def _has_named_template_args():
+    """Whether a template argument may name a constant.
+
+    Look for the same CppInterOp export that cppjit gates on. A rejected
+    instantiation leaves interpreter state that changes later tests.
+    """
+
+    libname = {
+        "win32": "clangCppInterOp.dll",
+        "darwin": "libclangCppInterOp.dylib",
+    }.get(sys.platform, "libclangCppInterOp.so")
+    lib = os.path.join(os.path.dirname(cppjit.__file__), "interop", "lib", libname)
+    try:
+        return hasattr(ctypes.CDLL(lib), "cppinterop_SupportsNamedTemplateArguments")
+    except OSError:
+        return False
+
+
+HAS_NAMED_TEMPLATE_ARGS = _has_named_template_args()
