@@ -1686,3 +1686,29 @@ class TestREGRESSION:
 
         # an enum instance still converts to an integer parameter
         assert ns.only_uint(ns.Color.Blue) == 22
+
+    def test55_enum_arg_standard_conversion(self):
+        """An enum instance converts to int before any class construction"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace EnumArgConversion {
+            enum Color { Red = 0, Green = 1, Blue = 2 };
+            struct FromInt    { FromInt(int v) : v(v) {} int v; };
+            struct FromEnum   { FromEnum(Color c) : v((int)c) {} int v; };
+            struct FromDouble { FromDouble(double d) : v((int)d) {} int v; };
+            int via_int(FromInt f)   { return f.v; }
+            int via_enum(FromEnum f) { return f.v; }
+            int pick(int i)          { return i; }
+            int pick(FromDouble f)   { return -f.v; }
+        }""")
+
+        ns = cppjit.gbl.EnumArgConversion
+
+        # implicit construction from an enum instance, through int and enum
+        assert ns.via_int(ns.Color.Blue) == 2
+        assert ns.via_enum(ns.Color.Green) == 1
+
+        # a standard conversion outranks a user-defined one, as in C++
+        assert ns.pick(ns.Color.Blue) == 2

@@ -641,10 +641,19 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
     pymeth->fMethodInfo->fFlags |= CallContext::kIsSorted;
   }
 
+  // three stages, as the C++ ranking: exact matches, standard conversions
+  // (kNoImplicit: no user-defined construction from the argument), then
+  // implicit conversions
   std::vector<Utility::PyError_t> errors;
   std::vector<bool> implicit_possible(methods.size());
-  for (int stage = 0; stage < 2; ++stage) {
-    bool bHaveImplicit = false;
+  bool bHaveImplicit = false;
+  for (int stage = 0; stage < 3; ++stage) {
+    if (stage == 1)
+      ctxt.fFlags |= CallContext::kNoImplicit;
+    else if (stage == 2) {
+      ctxt.fFlags &= ~CallContext::kNoImplicit;
+      ctxt.fFlags |= CallContext::kAllowImplicit;
+    }
     for (CPPOverload::Methods_t::size_type i = 0; i < nMethods; ++i) {
       if (stage && !implicit_possible[i])
         continue; // did not set implicit conversion, so don't try again
@@ -703,8 +712,6 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
     // only move forward if implicit conversions are available
     if (!bHaveImplicit)
       break;
-
-    ctxt.fFlags |= CallContext::kAllowImplicit;
   }
 
   // first summarize, then add details

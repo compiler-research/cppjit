@@ -353,11 +353,14 @@ static inline bool IsCPPEnumInstance(PyObject* pyobject) {
                           cppjit::cpyrt::PyStrings::gUnderlying);
 }
 
-// bools and enum instances match integer parameters in the implicit round only
+// bools and enum instances match integer parameters in the implicit round
+// only; a nested call under kNoImplicit is that round (an implicit
+// construction from the argument), so enum instances pass there
 static inline bool ImplicitBool(PyObject* pyobject, cpyrt::CallContext* ctxt) {
   using namespace cppjit::cpyrt;
   if (!AllowImplicit(ctxt) &&
-      (PyBool_Check(pyobject) || IsCPPEnumInstance(pyobject))) {
+      (PyBool_Check(pyobject) ||
+       (IsCPPEnumInstance(pyobject) && !NoImplicit(ctxt)))) {
     if (!NoImplicit(ctxt))
       ctxt->fFlags |= CallContext::kHaveImplicit;
     return false;
