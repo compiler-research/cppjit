@@ -1041,8 +1041,9 @@ CPPJIT_IMPL_BASIC_CONVERTER_IB(UInt16, uint16_t, long, c_uint16, PyInt_FromLong,
                                cpyrt_PyLong_AsUInt16, 'l')
 CPPJIT_IMPL_BASIC_CONVERTER_IB(Int32, int32_t, long, c_int32, PyInt_FromLong,
                                cpyrt_PyLong_AsInt32, 'l')
-CPPJIT_IMPL_BASIC_CONVERTER_IB(UInt32, uint32_t, long, c_uint32, PyInt_FromLong,
-                               cpyrt_PyLong_AsUInt32, 'l')
+CPPJIT_IMPL_BASIC_CONVERTER_IB(UInt32, uint32_t, unsigned long, c_uint32,
+                               PyLong_FromUnsignedLong, cpyrt_PyLong_AsUInt32,
+                               'l')
 CPPJIT_IMPL_BASIC_CONVERTER_IB(Short, short, long, c_short, PyInt_FromLong,
                                cpyrt_PyLong_AsShort, 'l')
 CPPJIT_IMPL_BASIC_CONVERTER_IB(UShort, unsigned short, long, c_ushort,
