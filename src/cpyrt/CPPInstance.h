@@ -14,6 +14,7 @@
 #include "CPPScope.h"
 #endif
 #include "CallContext.h" // for Parameter
+#include "CommonDefs.h"
 #include "cppjit_interop.h"
 
 // Standard
