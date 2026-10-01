@@ -34,7 +34,7 @@ static PyObject* tptc_call(typedefpointertoclassobject* self, PyObject* args,
 
 //-----------------------------------------------------------------------------
 static PyObject* tptc_getcppname(typedefpointertoclassobject* self, void*) {
-  return cpyrt_PyText_FromString(
+  return PyUnicode_FromString(
       (interop::GetScopedFinalName(self->fCppType) + "*").c_str());
 }
 
@@ -47,7 +47,7 @@ static PyObject* tptc_name(typedefpointertoclassobject* self, void*) {
     return pyname;
   }
 
-  return cpyrt_PyText_FromString("<unknown>*");
+  return PyUnicode_FromString("<unknown>*");
 }
 
 //-----------------------------------------------------------------------------
@@ -205,7 +205,7 @@ static PyObject* im_call(PyObject* meth, PyObject* args, PyObject* kw) {
   // GIL)
   Py_INCREF(self);
   func->m_self = self;
-  PyObject* result = cpyrt_PyCFunction_Call((PyObject*)func, args, kw);
+  PyObject* result = PyObject_Call((PyObject*)func, args, kw);
   func->m_self = nullptr;
   Py_DECREF(self);
   Py_DECREF(args);

@@ -35,11 +35,11 @@ static PyObject* ia_iternext(ia_iterobject* ia) {
 static int ia_traverse(ia_iterobject*, visitproc, void*) { return 0; }
 
 static PyObject* ia_getsize(ia_iterobject* ia, void*) {
-  return PyInt_FromSsize_t(ia->ia_len);
+  return PyLong_FromSsize_t(ia->ia_len);
 }
 
 static int ia_setsize(ia_iterobject* ia, PyObject* pysize, void*) {
-  Py_ssize_t size = PyInt_AsSsize_t(pysize);
+  Py_ssize_t size = PyLong_AsSsize_t(pysize);
   if (size == (Py_ssize_t)-1 && PyErr_Occurred())
     return -1;
   ia->ia_len = size;
@@ -57,7 +57,7 @@ static PyObject* ia_subscript(ia_iterobject* ia, PyObject* pyidx) {
   // Subscripting the iterator allows direct access through indexing on arrays
   // that do not have a defined length. This way, the return from accessing such
   // an array as a data member can both be used in a loop and directly.
-  Py_ssize_t idx = PyInt_AsSsize_t(pyidx);
+  Py_ssize_t idx = PyLong_AsSsize_t(pyidx);
   if (idx == (Py_ssize_t)-1 && PyErr_Occurred())
     return nullptr;
 

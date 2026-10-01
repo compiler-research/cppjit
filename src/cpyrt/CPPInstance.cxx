@@ -288,8 +288,7 @@ static PyObject* op_dispatch(PyObject* self, PyObject* args,
   // CPPOverload.
   PyObject *mname = nullptr, *sigarg = nullptr;
   if (!PyArg_ParseTuple(args, const_cast<char*>("O!O!:__dispatch__"),
-                        &cpyrt_PyText_Type, &mname, &cpyrt_PyText_Type,
-                        &sigarg))
+                        &PyUnicode_Type, &mname, &PyUnicode_Type, &sigarg))
     return nullptr;
 
   // get the named overload
@@ -691,14 +690,14 @@ static PyObject* op_repr(CPPInstance* self) {
   PyObject* repr = nullptr;
   if (self->IsSmart()) {
     std::string smartPtrName = interop::GetScopedFinalName(SMART_TYPE(self));
-    repr = cpyrt_PyText_FromFormat(
+    repr = PyUnicode_FromFormat(
         const_cast<char*>("<%s.%s object at %p held by %s at %p>"),
-        cpyrt_PyText_AsString(modname), clName.c_str(), self->GetObject(),
+        PyUnicode_AsUTF8(modname), clName.c_str(), self->GetObject(),
         smartPtrName.c_str(), self->GetObjectRaw());
   } else {
-    repr = cpyrt_PyText_FromFormat(const_cast<char*>("<%s.%s object at %p>"),
-                                   cpyrt_PyText_AsString(modname),
-                                   clName.c_str(), self->GetObject());
+    repr = PyUnicode_FromFormat(const_cast<char*>("<%s.%s object at %p>"),
+                                PyUnicode_AsUTF8(modname), clName.c_str(),
+                                self->GetObject());
   }
 
   Py_DECREF(modname);
@@ -783,7 +782,7 @@ static PyObject* op_str_internal(PyObject* pyobj, PyObject* lshift,
 
   if (res) {
     Py_DECREF(res);
-    return cpyrt_PyText_FromString(s.str().c_str());
+    return PyUnicode_FromString(s.str().c_str());
   }
 
   return nullptr;
@@ -844,7 +843,7 @@ static PyObject* op_str(CPPInstance* self) {
         const std::string& pretty =
             compat::ObjToString(self->ObjectIsA(), self->GetObject());
         if (!pretty.empty())
-          return cpyrt_PyText_FromString(pretty.c_str());
+          return PyUnicode_FromString(pretty.c_str());
         continue;
       }
 
@@ -888,7 +887,7 @@ static PyObject* op_str(CPPInstance* self) {
 
       // explicit template lookup
       PyObject* clName =
-          cpyrt_PyText_FromString(Utility::ClassName((PyObject*)self).c_str());
+          PyUnicode_FromString(Utility::ClassName((PyObject*)self).c_str());
       PyObject* OL = PyObject_GetItem(printValue, clName);
       Py_DECREF(clName);
 
@@ -902,7 +901,7 @@ static PyObject* op_str(CPPInstance* self) {
         const std::string& pv =
             *(std::string*)((CPPInstance*)pretty)->GetObject();
         if (!pv.empty() && pv.find("@0x") == std::string::npos)
-          result = cpyrt_PyText_FromString(pv.c_str());
+          result = PyUnicode_FromString(pv.c_str());
         Py_DECREF(pretty);
         if (result)
           return result;

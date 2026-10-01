@@ -111,7 +111,7 @@ CPYRT_LL_FLAG_GETSET(cpparray,  cpyrt::LowLevelView::kIsCppArray, __cpp_array__)
 
 //---------------------------------------------------------------------------
 static PyObject* ll_typecode(cpyrt::LowLevelView* self, void*) {
-  return cpyrt_PyText_FromString((char*)self->fBufInfo.format);
+  return PyUnicode_FromString((char*)self->fBufInfo.format);
 }
 
 //- Copy memoryview buffers =================================================
@@ -694,7 +694,7 @@ static PyObject* ll_shape(cpyrt::LowLevelView* self) {
   if (!shape)
     return nullptr;
   for (Py_ssize_t idim = 0; idim < view.ndim; ++idim) {
-    PyObject* pydim = PyInt_FromSsize_t(view.shape[idim]);
+    PyObject* pydim = PyLong_FromSsize_t(view.shape[idim]);
     if (!pydim) {
       Py_DECREF(shape);
       return nullptr;
@@ -734,7 +734,7 @@ static PyObject* ll_reshape(cpyrt::LowLevelView* self, PyObject* shape) {
       PyObject* pystr = PyObject_Str(shape);
       if (pystr) {
         PyErr_Format(PyExc_TypeError, "tuple object expected, received %s",
-                     cpyrt_PyText_AsStringChecked(pystr));
+                     PyUnicode_AsUTF8(pystr));
         Py_DECREF(pystr);
         return nullptr;
       }
@@ -762,7 +762,7 @@ static PyObject* ll_reshape(cpyrt::LowLevelView* self, PyObject* shape) {
   Py_ssize_t ndim = PyTuple_GET_SIZE(shape);
   cpyrt::dims_t dims(ndim);
   for (Py_ssize_t idim = 0; idim < ndim; ++idim) {
-    Py_ssize_t nlen = PyInt_AsSsize_t(PyTuple_GET_ITEM(shape, idim));
+    Py_ssize_t nlen = PyLong_AsSsize_t(PyTuple_GET_ITEM(shape, idim));
     if (nlen == -1 && PyErr_Occurred())
       return nullptr;
     if (nlen < cpyrt::UNKNOWN_SIZE) {
@@ -893,7 +893,7 @@ static PyObject* ll_as_string(cpyrt::LowLevelView* self) {
 
   char* buf = (char*)self->get_buf();
   size_t sz = strnlen(buf, (size_t)view.shape[0]);
-  return cpyrt_PyText_FromStringAndSize(buf, sz);
+  return PyUnicode_FromStringAndSize(buf, sz);
 }
 
 //---------------------------------------------------------------------------

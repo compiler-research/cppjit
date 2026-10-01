@@ -36,7 +36,7 @@ static PyObject* ep_new(PyTypeObject* subtype, PyObject* args, PyObject* kwds) {
       PyErr_Clear();
       if (PyTuple_GET_SIZE(args) == 1) {
         PyObject* msg = PyTuple_GET_ITEM(args, 0);
-        if (cpyrt_PyText_Check(msg)) {
+        if (PyUnicode_Check(msg)) {
           Py_INCREF(msg);
           excobj->fTopMessage = msg;
         }
@@ -72,7 +72,7 @@ static PyObject* ep_str(CPPExcInstance* self) {
       if (self->fTopMessage) {
         Py_INCREF(self->fTopMessage);
         PyObject* top = self->fTopMessage;
-        cpyrt_PyText_Append(&top, what);
+        PyUnicode_Append(&top, what);
         Py_DECREF(what);
         what = top;
       }
