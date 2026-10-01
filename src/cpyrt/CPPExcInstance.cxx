@@ -218,7 +218,7 @@ PyTypeObject CPPExcInstance_Type = {
     (setattrofunc)ep_setattro, // tp_setattro
     0,                         // tp_as_buffer
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_BASE_EXC_SUBCLASS |
-        Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_CHECKTYPES,    // tp_flags
+        Py_TPFLAGS_HAVE_GC,                            // tp_flags
     (char*)"cppjit exception object proxy (internal)", // tp_doc
     (traverseproc)ep_traverse,                         // tp_traverse
     (inquiry)ep_clear,                                 // tp_clear

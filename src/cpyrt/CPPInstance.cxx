@@ -1096,37 +1096,36 @@ PyTypeObject CPPInstance_Type = {
     0,                 // tp_getattro
     0,                 // tp_setattro
     0,                 // tp_as_buffer
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_CHECKTYPES |
-        Py_TPFLAGS_HAVE_GC,                  // tp_flags
-    (char*)"cppjit object proxy (internal)", // tp_doc
-    (traverseproc)op_traverse,               // tp_traverse
-    (inquiry)op_clear,                       // tp_clear
-    (richcmpfunc)op_richcompare,             // tp_richcompare
-    0,                                       // tp_weaklistoffset
-    0,                                       // tp_iter
-    0,                                       // tp_iternext
-    op_methods,                              // tp_methods
-    0,                                       // tp_members
-    op_getset,                               // tp_getset
-    0,                                       // tp_base
-    0,                                       // tp_dict
-    0,                                       // tp_descr_get
-    0,                                       // tp_descr_set
-    0,                                       // tp_dictoffset
-    0,                                       // tp_init
-    0,                                       // tp_alloc
-    (newfunc)op_new,                         // tp_new
-    0,                                       // tp_free
-    0,                                       // tp_is_gc
-    0,                                       // tp_bases
-    0,                                       // tp_mro
-    0,                                       // tp_cache
-    0,                                       // tp_subclasses
-    0,                                       // tp_weaklist
-    0,                                       // tp_del
-    0,                                       // tp_version_tag
-    0,                                       // tp_finalize
-    0                                        // tp_vectorcall
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC, // tp_flags
+    (char*)"cppjit object proxy (internal)",                       // tp_doc
+    (traverseproc)op_traverse,   // tp_traverse
+    (inquiry)op_clear,           // tp_clear
+    (richcmpfunc)op_richcompare, // tp_richcompare
+    0,                           // tp_weaklistoffset
+    0,                           // tp_iter
+    0,                           // tp_iternext
+    op_methods,                  // tp_methods
+    0,                           // tp_members
+    op_getset,                   // tp_getset
+    0,                           // tp_base
+    0,                           // tp_dict
+    0,                           // tp_descr_get
+    0,                           // tp_descr_set
+    0,                           // tp_dictoffset
+    0,                           // tp_init
+    0,                           // tp_alloc
+    (newfunc)op_new,             // tp_new
+    0,                           // tp_free
+    0,                           // tp_is_gc
+    0,                           // tp_bases
+    0,                           // tp_mro
+    0,                           // tp_cache
+    0,                           // tp_subclasses
+    0,                           // tp_weaklist
+    0,                           // tp_del
+    0,                           // tp_version_tag
+    0,                           // tp_finalize
+    0                            // tp_vectorcall
     CPYRT_PYTYPE_TAIL};
 
 } // namespace cppjit::cpyrt

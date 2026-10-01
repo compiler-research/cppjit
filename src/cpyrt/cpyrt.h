@@ -51,9 +51,6 @@ static inline const char* cpyrt_PyText_AsStringAndSize(PyObject* pystr,
   return cstr;
 }
 
-#define Py_TPFLAGS_HAVE_RICHCOMPARE 0
-#define Py_TPFLAGS_CHECKTYPES 0
-
 #ifdef R__MACOSX
 #if SIZEOF_SIZE_T == SIZEOF_INT
 #if defined(MAC_OS_X_VERSION_10_4)

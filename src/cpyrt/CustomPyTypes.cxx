@@ -250,8 +250,7 @@ PyTypeObject CustomInstanceMethod_Type = {
     0,
     0,
     0,
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_CHECKTYPES |
-        Py_TPFLAGS_BASETYPE,                          // tp_flags
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,         // tp_flags
     (char*)"cpyrt custom instance method (internal)", // tp_doc
     0,
     0,
