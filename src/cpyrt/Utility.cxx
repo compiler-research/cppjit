@@ -599,7 +599,7 @@ static bool AddTypeName(std::string& tmpl_name, PyObject* tn, PyObject* arg,
     PyErr_Clear();
   }
 
-  if (PyLong_Check(tn) || PyLong_Check(tn) || PyFloat_Check(tn)) {
+  if (PyLong_Check(tn) || PyFloat_Check(tn)) {
     // last ditch attempt, works for things like int values; since this is a
     // source of errors otherwise, it is limited to specific types and not
     // generally used (str(obj) can print anything ...)
@@ -849,7 +849,7 @@ static bool AddTypeName(std::vector<Cpp::TemplateArgInfo>& types, PyObject* tn,
     PyErr_Clear();
   }
 
-  if (PyLong_Check(tn) || PyLong_Check(tn) || PyFloat_Check(tn)) {
+  if (PyLong_Check(tn) || PyFloat_Check(tn)) {
     // last ditch attempt, works for things like int values; since this is a
     // source of errors otherwise, it is limited to specific types and not
     // generally used (str(obj) can print anything ...)

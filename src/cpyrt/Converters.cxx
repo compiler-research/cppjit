@@ -394,7 +394,7 @@ static inline bool cpyrt_PyLong_AsBool(PyObject* pyobject) {
 // conversions)
 #define CPPJIT_PYLONG_AS_TYPE(name, type, limit_low, limit_high)               \
   static inline type cpyrt_PyLong_As##name(PyObject* pyobject) {               \
-    if (!(PyLong_Check(pyobject) || PyLong_Check(pyobject))) {                 \
+    if (!PyLong_Check(pyobject)) {                                             \
       if (pyobject == cpyrt::gDefaultObject)                                   \
         return (type)0;                                                        \
       PyErr_SetString(PyExc_TypeError,                                         \
@@ -424,7 +424,7 @@ static inline long cpyrt_PyLong_AsStrictLong(PyObject* pyobject) {
   // strict python integer to C++ long integer conversion
 
   // prevent float -> long (see cpyrt_PyLong_AsStrictInt)
-  if (!(PyLong_Check(pyobject) || PyLong_Check(pyobject))) {
+  if (!PyLong_Check(pyobject)) {
     if (pyobject == cpyrt::gDefaultObject)
       return (long)0;
     PyErr_SetString(PyExc_TypeError,
@@ -439,7 +439,7 @@ static inline PY_LONG_LONG cpyrt_PyLong_AsStrictLongLong(PyObject* pyobject) {
   // strict python integer to C++ long long integer conversion
 
   // prevent float -> long (see cpyrt_PyLong_AsStrictInt)
-  if (!(PyLong_Check(pyobject) || PyLong_Check(pyobject))) {
+  if (!PyLong_Check(pyobject)) {
     if (pyobject == cpyrt::gDefaultObject)
       return (PY_LONG_LONG)0;
     PyErr_SetString(PyExc_TypeError,
@@ -1595,7 +1595,7 @@ bool cpyrt::VoidArrayConverter::GetAddressSpecialCase(PyObject* pyobject,
   }
 
   // (2): allow integer zero to act as a null pointer (C NULL), no deriveds
-  if (PyLong_CheckExact(pyobject) || PyLong_CheckExact(pyobject)) {
+  if (PyLong_CheckExact(pyobject)) {
     intptr_t val = (intptr_t)PyLong_AsLongLong(pyobject);
     if (val == 0l) {
       address = (void*)val;
@@ -2105,7 +2105,7 @@ static inline bool cpyrt_PyUnicodeAsBytes2Buffer(PyObject* pyobject,
     }                                                                          \
                                                                                \
     PyErr_Clear();                                                             \
-    if (!(PyLong_Check(pyobject) || PyLong_Check(pyobject))) {                 \
+    if (!PyLong_Check(pyobject)) {                                             \
       bool result = InstanceConverter::SetArg(pyobject, para, ctxt);           \
       para.fTypeCode = 'V';                                                    \
       return result;                                                           \
@@ -2145,7 +2145,7 @@ bool cpyrt::STLWStringConverter::SetArg(PyObject* pyobject, Parameter& para,
     return true;
   }
 
-  if (!(PyLong_Check(pyobject) || PyLong_Check(pyobject))) {
+  if (!PyLong_Check(pyobject)) {
     bool result = InstancePtrConverter<false>::SetArg(pyobject, para, ctxt);
     para.fTypeCode = 'V';
     return result;
@@ -2182,7 +2182,7 @@ cpyrt::STLStringViewConverter::STLStringViewConverter(bool keepControl)
 bool cpyrt::STLStringViewConverter::SetArg(PyObject* pyobject, Parameter& para,
                                            CallContext* ctxt) {
   // normal instance convertion (eg. string_view object passed)
-  if (!PyLong_Check(pyobject) && !PyLong_Check(pyobject)) {
+  if (!PyLong_Check(pyobject)) {
     CallContextRAII<CallContext::kNoImplicit> noimp(ctxt);
     if (InstanceConverter::SetArg(pyobject, para, ctxt)) {
       para.fTypeCode = 'V';
