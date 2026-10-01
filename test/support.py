@@ -137,11 +137,22 @@ IS_CPP23 = (
 )
 
 
+def run_child(code, *args):
+    # a failed JIT materialization poisons the session, so a call meant to
+    # fail runs in a process of its own
+    return subprocess.run(
+        [sys.executable, "-c", code, *args],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+    )
+
+
 def _jit_resolves_std_filesystem():
     # The JIT resolves std::filesystem against the loaded libstdc++.so, not
-    # the compile headers -- a manylinux image (gcc-toolset headers over a
-    # GCC-8 base runtime) compiles the include yet dies resolving the
-    # symbols. That failure is a fatal JIT error, so ask in a child process.
+    # the headers, so a GCC 8 runtime under newer headers fails at the call.
+    # A child process keeps that failure out of the test process.
     probe = (
         "import cppjit\n"
         'cppjit.cppdef("""#include <filesystem>\n'
@@ -150,12 +161,7 @@ def _jit_resolves_std_filesystem():
         "assert cppjit.gbl.fs_probe() > 0\n"
     )
     try:
-        return (
-            subprocess.run(
-                [sys.executable, "-c", probe], capture_output=True, timeout=300
-            ).returncode
-            == 0
-        )
+        return run_child(probe).returncode == 0
     except subprocess.TimeoutExpired:
         return False
 

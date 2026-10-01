@@ -91,9 +91,76 @@ jobs:
           cmake -S . -B build-external -DLLVM_DIR="$LLVM_DIR" -DCppInterOp_DIR="$RUNNER_TEMP/cppinterop-build/lib/cmake/CppInterOp"
           cmake -S . -B build-external -DLLVM_DIR="$LLVM_DIR" -DCppInterOp_DIR="$RUNNER_TEMP/cppinterop-build/lib/cmake/CppInterOp"
 
+  # The wheel toolchain on the manylinux floor and on the current release:
+  # AlmaLinux 8 builds with gcc-toolset-14 and JIT-compiles against the GCC 8
+  # headers and runtime, AlmaLinux 10 uses its system compiler throughout.
+  build-test-almalinux:
+    name: almalinux:${{ matrix.release }}/llvm21/py3.12/c++${{ matrix.cxx }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { release: '8',  cxx: '17', python: python3.12, packages: gcc-toolset-14-gcc-c++, bin: /opt/rh/gcc-toolset-14/root/usr/bin }
+          - { release: '10', cxx: '20', python: python3,    packages: eigen3-devel,           bin: /usr/bin }
+    runs-on: ubuntu-24.04
+    container: almalinux:${{ matrix.release }}
+    steps:
+      - name: Install the build and test dependencies
+        env:
+          PACKAGES: ${{ matrix.packages }}
+          PYTHON: ${{ matrix.python }}
+        run: dnf -y install gcc-c++ make git zstd zlib-devel boost-devel "$PYTHON-devel" "$PYTHON-pip" "$PACKAGES"
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Put the distribution's python on PATH
+        env:
+          PYTHON: ${{ matrix.python }}
+        run: |
+          "$PYTHON" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - uses: compiler-research/ci-workflows/actions/setup-recipe@main
+        id: llvm
+        with:
+          recipe: llvm-wheel
+          version: '21.1.8'
+          os: ubuntu-24.04
+          arch: x86_64
+          ref: 02f380b2e46746cd1c948c085894b8594a867fba
+
+      - name: Build and install cppjit with the test requirements
+        env:
+          CC: ${{ matrix.bin }}/gcc
+          CXX: ${{ matrix.bin }}/g++
+          LLVM_DIR: ${{ steps.llvm.outputs.path }}/lib/cmake/llvm
+        run: python -m pip install . -v --config-settings=cmake.define.LLVM_DIR="$LLVM_DIR" -r requirements.txt
+
+      - name: Run the test suite
+        env:
+          CPPINTEROP_EXTRA_INTERPRETER_ARGS: -std=c++${{ matrix.cxx }}
+        run: |
+          set -o pipefail
+          cd test
+          make -j"$(nproc)" PYTHON=python
+          python -m pytest -ra --tb=short -p no:cacheprovider --durations=25 \
+            -n auto --max-worker-restart 2 | tee "$RUNNER_TEMP/pytest.log"
+
+      - name: Capture summary
+        if: always()
+        run: tail -n1 "$RUNNER_TEMP/pytest.log" > pytest-summary.txt 2>/dev/null || echo 'no summary (build or setup failed)' > pytest-summary.txt
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: result-almalinux-${{ matrix.release }}-llvm21-py3.12-cxx${{ matrix.cxx }}
+          path: pytest-summary.txt
+
   report:
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: build-test
+    needs: [build-test, build-test-almalinux]
     runs-on: ubuntu-latest
     permissions:
       contents: read

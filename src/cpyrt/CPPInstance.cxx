@@ -718,13 +718,12 @@ static Py_hash_t op_hash(CPPInstance* self) {
   // Try to locate an std::hash for this type and use that if it exists
   CPPClass* klass = (CPPClass*)Py_TYPE(self);
   if (klass->fOperators && klass->fOperators->fHash) {
-    Py_hash_t h = 0;
     PyObject* hashval = PyObject_CallFunctionObjArgs(klass->fOperators->fHash,
                                                      (PyObject*)self, nullptr);
-    if (hashval) {
-      h = cpyrt_PyLong_AsHash_t(hashval);
-      Py_DECREF(hashval);
-    }
+    if (!hashval)
+      return -1;
+    Py_hash_t h = cpyrt_PyLong_AsHash_t(hashval);
+    Py_DECREF(hashval);
     return h;
   }
 
@@ -737,18 +736,19 @@ static Py_hash_t op_hash(CPPInstance* self) {
     Py_DECREF(dct);
     if (isValid) {
       PyObject* hashobj = PyObject_CallObject(hashcls, nullptr);
+      Py_DECREF(hashcls);
+      if (!hashobj)
+        return -1;
       if (!klass->fOperators)
         klass->fOperators = new Utility::PyOperators{};
       klass->fOperators->fHash = hashobj;
-      Py_DECREF(hashcls);
 
-      Py_hash_t h = 0;
       PyObject* hashval =
           PyObject_CallFunctionObjArgs(hashobj, (PyObject*)self, nullptr);
-      if (hashval) {
-        h = cpyrt_PyLong_AsHash_t(hashval);
-        Py_DECREF(hashval);
-      }
+      if (!hashval)
+        return -1;
+      Py_hash_t h = cpyrt_PyLong_AsHash_t(hashval);
+      Py_DECREF(hashval);
       return h;
     }
     Py_DECREF(hashcls);

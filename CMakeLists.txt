@@ -97,6 +97,12 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     target_link_options(cppjit PRIVATE -Wl,-Bsymbolic-functions)
 endif()
 
+# Keep the statically linked toolchain runtime (libstdc++_nonshared, libgcc)
+# out of the dynamic symbol table, or the JIT resolves against it.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(cppjit PRIVATE -Wl,--exclude-libs,ALL)
+endif()
+
 # macOS needs to allow undefined Python symbols
 if(APPLE)
     set_target_properties(cppjit PROPERTIES

@@ -14,6 +14,7 @@ using namespace cppjit;
 #include "MemoryRegulator.h"
 #include "ProxyWrappers.h"
 #include "PyStrings.h"
+#include "StderrCapture.h"
 #include "TemplateProxy.h"
 #include "TupleOfInstances.h"
 #include "Utility.h"
@@ -237,8 +238,6 @@ PyObject* gSegvException = nullptr;
 PyObject* gIllException = nullptr;
 PyObject* gAbrtException = nullptr;
 std::unordered_set<interop::TCppScope_t> gPinnedTypes;
-std::ostringstream gCapturedError;
-std::streambuf* gOldErrorBuffer = nullptr;
 
 std::unordered_map<std::string, std::vector<PyObject*>>& pythonizations() {
   static std::unordered_map<std::string, std::vector<PyObject*>> pyzMap;
@@ -813,25 +812,17 @@ static PyObject* AddSmartPtrType(PyObject*, PyObject* args) {
 }
 
 //----------------------------------------------------------------------------
-static PyObject* BeginCaptureStderr(PyObject*, PyObject*) {
-  gOldErrorBuffer = std::cerr.rdbuf();
-  std::cerr.rdbuf(gCapturedError.rdbuf());
+static interop::StderrCapture gStderrCapture;
 
+static PyObject* BeginCaptureStderr(PyObject*, PyObject*) {
+  gStderrCapture.Begin();
   Py_RETURN_NONE;
 }
 
 //----------------------------------------------------------------------------
 static PyObject* EndCaptureStderr(PyObject*, PyObject*) {
-  // restore old rdbuf and return captured result
-  std::cerr.rdbuf(gOldErrorBuffer);
-  gOldErrorBuffer = nullptr;
-
-  std::string capturedError = std::move(gCapturedError).str();
-
-  gCapturedError.str("");
-  gCapturedError.clear();
-
-  return Py_BuildValue("s", capturedError.c_str());
+  std::string text = gStderrCapture.Stop();
+  return PyUnicode_DecodeUTF8(text.data(), (Py_ssize_t)text.size(), "replace");
 }
 } // unnamed namespace
 

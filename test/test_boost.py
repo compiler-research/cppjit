@@ -29,6 +29,17 @@ def add_boost_include_path():
         cppjit.add_include_path(boost_extra_inc)
 
 
+def boost_version():
+    import cppjit
+
+    add_boost_include_path()
+    try:
+        cppjit.include("boost/version.hpp")
+    except Exception:
+        return 0
+    return cppjit.evaluate("BOOST_VERSION")
+
+
 @mark.skipif(noboost == True, reason="boost not found")
 class TestBOOSTANY:
     def setup_class(cls):
@@ -178,6 +189,10 @@ class TestBOOSTVARIANT:
 
 
 @mark.skipif(((noboost == True) or IS_MAC_ARM or IS_MAC_X86), reason="boost not found")
+@mark.skipif(
+    not noboost and boost_version() < 106700,
+    reason="is_placeholder rejects an incomplete concept type before Boost 1.67",
+)
 class TestBOOSTERASURE:
     def setup_class(cls):
         import cppjit
