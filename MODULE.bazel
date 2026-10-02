@@ -1,0 +1,62 @@
+module(
+    name = "cppjit",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "cppjit_bazel", version = "0.1.0")
+local_path_override(
+    module_name = "cppjit_bazel",
+    path = "bazel",
+)
+
+bazel_dep(name = "cppinterop", version = "0.1.0")
+
+# Fetch the same CppInterOp commit the CMake build pins (CPPINTEROP_GIT_TAG in
+# CMakeLists.txt), so both builds compile the same backend sources and no
+# sibling checkout is needed. Keep the two pins in step.
+# The patch only renames the shared Bazel module (cppyy_bazel -> cppjit_bazel)
+# in the fetched tree; drop it once the pinned commit carries the rename.
+# To build a fork or a newer commit, swap urls/integrity/strip_prefix together.
+archive_override(
+    module_name = "cppinterop",
+    integrity = "sha256-Oo15vfnyOyZMFWZ/lzm20v/UVc5lWm5HSMcELmOXUrs=",
+    patch_strip = 1,
+    patches = ["//:bazel-support/cppinterop-cppjit-bazel-module.patch"],
+    strip_prefix = "CppInterOp-9802d61921ad5688ae42e4e628d754fc1192244d",
+    urls = ["https://github.com/compiler-research/CppInterOp/archive/9802d61921ad5688ae42e4e628d754fc1192244d.tar.gz"],
+)
+
+# Dev loop: build a sibling CppInterOp checkout instead of the pinned archive
+# (the Bazel equivalent of CMake's CPPINTEROP_SOURCE_DIR). Bazel allows one
+# override per module, so comment out the archive_override above when you
+# enable this. Keep it commented out in a commit: an enabled override makes
+# the build depend on a checkout outside the repo, which nobody else has.
+# local_path_override(
+#     module_name = "cppinterop",
+#     path = "../CppInterOp",
+# )
+
+bazel_dep(name = "rules_python", version = "1.8.5")
+
+# @llvm comes from the local LLVM/Clang tree selected by LLVM_DIR.
+llvm = use_extension("@cppjit_bazel//:llvm.bzl", "llvm")
+
+# Match the CMake build's CMAKE_CXX_STANDARD. A mixed standard across the
+# libcppjit / libclangCppInterOp boundary silently changes inline bodies.
+llvm.config(cxx_std = "c++20")
+use_repo(llvm, llvm = "cppjit_llvm")
+
+# Opt in to the centralized clang toolchain from cppjit_bazel (standalone build).
+register_toolchains("@llvm//:cc_toolchain")
+
+# Match the primary CI matrix cell in ci.yml.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.14")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "cppjit_test_deps",
+    python_version = "3.14",
+    requirements_lock = "//:requirements_bazel.txt",
+)
+use_repo(pip, "cppjit_test_deps")
