@@ -81,6 +81,7 @@ inline void cpyrt::CPPMethod::Copy_(const CPPMethod& /* other */) {
   // fScope and fMethod handled separately
 
   // do not copy caches
+  fDeclaringScope = nullptr;
   fExecutor = nullptr;
   fArgIndices = nullptr;
   fArgsRequired = -1;
@@ -341,8 +342,8 @@ extern std::unordered_map<interop::TCppType_t, interop::TCppType_t>
 //- constructors and destructor ----------------------------------------------
 cpyrt::CPPMethod::CPPMethod(interop::TCppScope_t scope,
                             interop::TCppMethod_t method)
-    : fMethod(method), fScope(scope), fExecutor(nullptr), fArgIndices(nullptr),
-      fArgsRequired(-1) {
+    : fMethod(method), fScope(scope), fDeclaringScope(nullptr),
+      fExecutor(nullptr), fArgIndices(nullptr), fArgsRequired(-1) {
   interop::TCppType_t result =
       interop::ResolveType(interop::GetMethodReturnType(fMethod));
   if (TypeReductionMap.find(result) != TypeReductionMap.end())
@@ -1015,15 +1016,17 @@ PyObject* cpyrt::CPPMethod::Call(CPPInstance*& self, cpyrt_PyArgs_t args,
   // brought into fScope through a using-declaration (e.g. `using Base::meth;`)
   // is still declared in the base, so 'this' has to be adjusted to that base's
   // subobject. Using fScope here would yield a zero offset and corrupt memory.
-  interop::TCppScope_t declaring =
-      interop::GetParentScope(interop::TCppScope_t(fMethod.data));
-  if (!declaring)
-    declaring = fScope;
+  if (!fDeclaringScope) {
+    fDeclaringScope =
+        interop::GetParentScope(interop::TCppScope_t(fMethod.data));
+    if (!fDeclaringScope)
+      fDeclaringScope = fScope;
+  }
 
   ptrdiff_t offset = 0;
-  if (derived && derived != declaring)
-    offset =
-        interop::GetBaseOffset(derived, declaring, object, 1 /* up-cast */);
+  if (derived && derived != fDeclaringScope)
+    offset = interop::GetBaseOffset(derived, fDeclaringScope, object,
+                                    1 /* up-cast */);
 
   // actual call; recycle self instead of returning new object for same address
   // objects

@@ -726,8 +726,14 @@ interop::TCppType_t interop::GetTypeFromScope(TCppScope_t klass) {
 }
 
 interop::TCppScope_t interop::GetGlobalScope() {
-  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
-  return Cpp::GetGlobalScope();
+  // The global scope (the first declaration of the interpreter's translation
+  // unit) never changes, but this is called on every method call that
+  // receives 'self' as its first argument, so avoid the lock and the query.
+  static const TCppScope_t s_global = [] {
+    std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+    return Cpp::GetGlobalScope();
+  }();
+  return s_global;
 }
 
 bool interop::IsTemplate(TCppScope_t handle) { return Cpp::IsTemplate(handle); }
