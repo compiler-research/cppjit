@@ -861,6 +861,11 @@ interop::TCppScope_t interop::GetNamed(const std::string& name,
   return nullptr;
 }
 
+bool interop::IsVisibleName(const std::string& name, TCppScope_t parent_scope) {
+  std::lock_guard<RInterOpMutex> Lock(InterOpMutex);
+  return Cpp::IsVisibleName(name, parent_scope);
+}
+
 interop::TCppScope_t interop::GetParentScope(TCppScope_t scope) {
   std::lock_guard<RInterOpMutex> Lock(InterOpMutex);
   return Cpp::GetParentScope(scope);
