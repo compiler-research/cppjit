@@ -720,6 +720,11 @@ interop::TCppScope_t interop::GetScopeFromType(TCppType_t type) {
   return Cpp::GetScopeFromType(type);
 }
 
+interop::TCppType_t interop::GetUnderlyingType(TCppType_t type) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::GetUnderlyingType(type);
+}
+
 interop::TCppType_t interop::GetTypeFromScope(TCppScope_t klass) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::GetTypeFromScope(klass);
@@ -1774,6 +1779,12 @@ interop::TCppScope_t interop::InstantiateTemplate(TCppScope_t tmpl,
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::InstantiateTemplate(tmpl, args, args_size,
                                   /*instantiate_body=*/false);
+}
+
+void interop::GetClassTemplateInstantiationArgs(
+    TCppScope_t templ_instance, std::vector<Cpp::TemplateArgInfo>& args) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  Cpp::GetClassTemplateInstantiationArgs(templ_instance, args);
 }
 
 void interop::DumpScope(TCppScope_t scope) {

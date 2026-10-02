@@ -3230,9 +3230,23 @@ struct faux_initlist {
 cpyrt::InitializerListConverter::InitializerListConverter(
     interop::TCppScope_t klass, std::string const& value_type)
 
+    : InitializerListConverter{klass, value_type,
+                               interop::GetType(value_type, true)} {}
+
+cpyrt::InitializerListConverter::InitializerListConverter(
+    interop::TCppScope_t klass, std::string const& value_type,
+    interop::TCppType_t value_ctype)
+
     : InstanceConverter{klass}, fValueTypeName{value_type},
-      fValueType{interop::GetScope(value_type)},
-      fValueSize{interop::SizeOfType(interop::GetType(value_type, true))} {}
+      fValueType{interop::IsClassType(value_ctype)
+                     ? interop::GetScopeFromType(value_ctype)
+                     : nullptr},
+      fValueSize{0} {
+  // like GetScope(), make sure a class template instance is defined
+  if (fValueType)
+    interop::IsComplete(fValueType);
+  fValueSize = interop::SizeOfType(value_ctype);
+}
 
 cpyrt::InitializerListConverter::~InitializerListConverter() {
   for (Converter* converter : fConverters) {
@@ -3781,14 +3795,21 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
 
   //-- special case: initializer list
   if (realTypeStr.compare(0, 21, "std::initializer_list") == 0) {
-    // get the type of the list and create a converter (TODO: get hold of
-    // value_type?)
+    // get the type of the list and create a converter
     auto pos = realTypeStr.find('<');
     std::string value_type =
         realTypeStr.substr(pos + 1, realTypeStr.size() - pos - 2);
+    // take the element type from the class, as resolving its spelling
+    // declares new code
+    interop::TCppScope_t list = interop::GetScopeFromType(realType);
+    std::vector<Cpp::TemplateArgInfo> args;
+    interop::GetClassTemplateInstantiationArgs(list, args);
+    interop::TCppType_t value_ctype = args.size() == 1
+                                          ? interop::TCppType_t(args[0].m_Type)
+                                          : interop::GetType(value_type, true);
     Converter* cnv = nullptr;
     bool use_byte_cnv = false;
-    if (cpd == "" && interop::GetScope(value_type)) {
+    if (cpd == "" && interop::IsClassType(value_ctype)) {
       // initializer list of object values does not work as the target is raw
       // memory; simply use byte copies
 
@@ -3797,8 +3818,7 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
     } else
       cnv = CreateConverter(value_type);
     if (cnv || use_byte_cnv)
-      return new InitializerListConverter(interop::GetScopeFromType(realType),
-                                          value_type);
+      return new InitializerListConverter(list, value_type, value_ctype);
   }
 
   //-- still nothing? use a generalized converter
