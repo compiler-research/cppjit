@@ -1320,6 +1320,10 @@ bool interop::HasVirtualDestructor(TCppScope_t scope) {
 interop::TCppIndex_t interop::GetNumBases(TCppScope_t klass) {
   // Get the total number of base classes that this class has.
   std::lock_guard<RInterOpMutex> Lock(InterOpMutex);
+  // Autoloading a dictionary may register only a forward declaration of the
+  // class, which has no bases; force the definition into the AST first, or
+  // the Python proxy is built without its base classes.
+  Cpp::GetOrForceDefinition(klass);
   return Cpp::GetNumBases(klass);
 }
 

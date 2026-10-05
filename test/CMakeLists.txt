@@ -125,3 +125,12 @@ CPPJIT_ADD_PYTEST(test_leakcheck)
 CPPJIT_ADD_PYTEST(test_numba)
 CPPJIT_ADD_PYTEST(test_regression)
 CPPJIT_ADD_PYTEST(test_root_interpreter_lock)
+
+# A rootcling dictionary (unlike an ACLiC one) registers only forward
+# declarations of its classes, which are completed on demand.
+ROOT_STANDARD_LIBRARY_PACKAGE(FwdDeclBases NO_INSTALL_HEADERS NO_SOURCES NO_CXXMODULE
+  HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/cpp/fwddecl_bases.h
+  LINKDEF cpp/fwddecl_bases_LinkDef.h
+  DEPENDENCIES Core)
+ROOT_SET_OUTPUT_DIRECTORIES(FwdDeclBases)
+CPPJIT_ADD_PYTEST(test_root_fwddecl)
