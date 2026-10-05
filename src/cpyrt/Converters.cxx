@@ -3688,6 +3688,11 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
   // resolved type is its underlying integer, which carries the conversion
   if (interop::IsEnumType(type) && fullType != "std::byte") {
     h = gConvFactories.find(resolvedTypeStr);
+    // the underlying integer may be spelled through a typedef (e.g.
+    // `enum E : std::int32_t`), so fall back to its canonical spelling
+    if (h == gConvFactories.end())
+      h = gConvFactories.find(
+          interop::GetTypeAsString(interop::ResolveType(resolvedType)));
     if (h != gConvFactories.end())
       return new EnumConverter(
           (h->second)(dims),
