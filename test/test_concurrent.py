@@ -251,10 +251,17 @@ class TestCONCURRENT:
             virtual void set_something(std::map<std::string, std::string>, std::string) {}
         }; }""")
 
+        # A thread that dies with an exception only warns; collect and
+        # assert instead, so conversion clashes actually fail the test.
+        failures = []
+
         def test():
-            o = {"a": "b"}  # causes a temporary to be created
-            simulation = cppjit.gbl.CPPOverloadReuse.Simulation1()
-            simulation.set_something(o, ".")
+            try:
+                o = {"a": "b"}  # causes a temporary to be created
+                simulation = cppjit.gbl.CPPOverloadReuse.Simulation1()
+                simulation.set_something(o, ".")
+            except Exception as e:
+                failures.append(e)
 
         threads = [threading.Thread(target=test) for i in range(0, 100)]
 
@@ -263,6 +270,10 @@ class TestCONCURRENT:
 
         for t in threads:
             t.join()
+
+        assert not failures, (
+            f"{len(failures)} of {len(threads)} threads failed: {failures[0]}"
+        )
 
     def test07_overload_reuse_in_threads_wo_gil(self):
         """Threads reuse overload objects; check for clashes if no GIL"""
