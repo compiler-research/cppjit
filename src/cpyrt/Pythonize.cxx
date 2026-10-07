@@ -2164,15 +2164,28 @@ bool cpyrt::Pythonize(PyObject* pyclass, interop::TCppScope_t scope) {
   //   preferred if present
   //   - normal pythonization: only called if explicit isn't present, falls
   //   through to base classes
+  // The old __cppyy_explicit_pythonize__ and __cppyy_pythonize__ names are
+  // also accepted as a backwards compatibility mechanism for former cppyy
+  // users, so their C++ code keeps working unchanged. The __cppjit_* names
+  // take precedence.
   bool bUserOk = true;
   PyObject* res = nullptr;
   PyObject* pyname = PyUnicode_FromString(name.c_str());
-  if (HasAttrDirect(pyclass, PyStrings::gExPythonize)) {
-    res = PyObject_CallMethodObjArgs(pyclass, PyStrings::gExPythonize, pyclass,
-                                     pyname, nullptr);
+  PyObject* exPythonize = nullptr;
+  if (HasAttrDirect(pyclass, PyStrings::gExPythonize))
+    exPythonize = PyStrings::gExPythonize;
+  else if (HasAttrDirect(pyclass, PyStrings::gCppyyExPythonize))
+    exPythonize = PyStrings::gCppyyExPythonize;
+  if (exPythonize) {
+    res = PyObject_CallMethodObjArgs(pyclass, exPythonize, pyclass, pyname,
+                                     nullptr);
     bUserOk = (bool)res;
   } else {
     PyObject* func = PyObject_GetAttr(pyclass, PyStrings::gPythonize);
+    if (!func) {
+      PyErr_Clear();
+      func = PyObject_GetAttr(pyclass, PyStrings::gCppyyPythonize);
+    }
     if (func) {
       res = PyObject_CallFunctionObjArgs(func, pyclass, pyname, nullptr);
       Py_DECREF(func);
