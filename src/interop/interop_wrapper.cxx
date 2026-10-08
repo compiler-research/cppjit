@@ -225,6 +225,17 @@ static void defineRuntimeHelpers() {
   // helper for multiple inheritance
   Cpp::Declare("namespace __cppjit_internal { struct Sep; }",
                /*silent=*/false);
+
+  Cpp::Declare("namespace __cppjit_internal { template<class D, class B>"
+               " bool base_offset(void* addr, bool up, long long* offset) {"
+               " D* d = nullptr;"
+               " if (up) d = (D*)addr;"
+               " else if constexpr (__is_polymorphic(B))"
+               " d = dynamic_cast<D*>((B*)addr);"
+               " if (!d) return false;"
+               " *offset = (long long)((char*)static_cast<B*>(d) - (char*)d);"
+               " return true; } }",
+               /*silent=*/false);
 }
 
 } // unnamed namespace
@@ -1191,14 +1202,47 @@ bool interop::GetSmartPtrInfo(const std::string& tname, TCppScope_t* raw,
 }
 
 // type offsets --------------------------------------------------------------
+using BaseOffsetFunc_t = bool (*)(void*, bool, long long*);
+
+static BaseOffsetFunc_t make_base_offset_func(interop::TCppScope_t derived,
+                                              interop::TCppScope_t base) {
+  static unsigned long long func_count = 0;
+  const std::string name =
+      "__cppjit_base_offset_" + std::to_string(func_count++);
+  const std::string code = "extern \"C\" bool " + name +
+                           "(void* addr, bool up, long long* offset) {"
+                           " return __cppjit_internal::base_offset<" +
+                           Cpp::GetQualifiedCompleteName(derived) + ", " +
+                           Cpp::GetQualifiedCompleteName(base) +
+                           ">(addr, up, offset); }";
+  if (Cpp::Declare(code.c_str(), /*silent=*/true))
+    return nullptr;
+  return (BaseOffsetFunc_t)Cpp::GetFunctionAddress(name.c_str());
+}
+
 ptrdiff_t interop::GetBaseOffset(TCppScope_t derived, TCppScope_t base,
-                                 TCppObject_t /*address*/, int direction,
+                                 TCppObject_t address, int direction,
                                  bool rerror) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   intptr_t offset = Cpp::GetBaseClassOffset(derived, base);
 
   if (offset == -1) // Cling error, treat silently
     return rerror ? (ptrdiff_t)offset : 0;
+
+  static std::map<std::pair<const void*, const void*>, BaseOffsetFunc_t>
+      s_vbase_offset_funcs;
+  if (address && Cpp::IsBaseReachedVirtually(derived, base)) {
+    const auto key = std::make_pair(derived.data, base.data);
+    auto func = s_vbase_offset_funcs.find(key);
+    if (func == s_vbase_offset_funcs.end())
+      func = s_vbase_offset_funcs
+                 .emplace(key, make_base_offset_func(derived, base))
+                 .first;
+    long long dynamic_offset = 0;
+    if (func->second &&
+        func->second(address.data, direction > 0, &dynamic_offset))
+      offset = (intptr_t)dynamic_offset;
+  }
 
   return (ptrdiff_t)(direction < 0 ? -offset : offset);
 }
