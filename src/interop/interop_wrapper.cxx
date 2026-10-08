@@ -729,6 +729,11 @@ interop::TCppScope_t interop::GetScopeFromType(TCppType_t type) {
   return Cpp::GetScopeFromType(type);
 }
 
+interop::TCppType_t interop::GetUnderlyingType(TCppType_t type) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::GetUnderlyingType(type);
+}
+
 interop::TCppType_t interop::GetTypeFromScope(TCppScope_t klass) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::GetTypeFromScope(klass);
