@@ -1030,3 +1030,39 @@ class TestADVANCEDCPP:
 
         for norm in [ns.norm_cr, ns.norm_m, ns.norm_v]:
             assert round(norm(p3) - pynorm, 8) == 0
+
+    def test30_virtual_base_of_hidden_type(self):
+        """Offset to a virtual base taken from the actual object"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace vbase_hidden {
+        struct IB { virtual ~IB() {} virtual long id() const { return 42; } };
+        struct ID1 : virtual IB {};
+        struct ID2 : virtual IB {};
+        struct IC { virtual ~IC() {} long z = 7; };
+        struct M : IC {};
+        struct ID3 : virtual M {};
+        long call(IB* p) { return p->id(); }
+        long call_c(IC* p) { return p->z; }
+        }
+        namespace {
+        struct Other { virtual ~Other() {} long x[100] = {}; };
+        struct Hidden : Other, vbase_hidden::ID1, vbase_hidden::ID2 {};
+        struct Hidden3 : Other, vbase_hidden::ID1, vbase_hidden::ID3 { long y = 3; };
+        }
+        namespace vbase_hidden {
+        void* make2() { return static_cast<ID2*>(new Hidden); }
+        void* make3() { return static_cast<ID3*>(new Hidden3); }
+        }""")
+
+        ns = cppjit.gbl.vbase_hidden
+
+        d2 = cppjit.bind_object(ns.make2(), ns.ID2)
+        assert ns.call(d2) == 42
+        assert d2.id() == 42
+
+        d3 = cppjit.bind_object(ns.make3(), ns.ID3)
+        assert ns.call_c(d3) == 7
+        assert d3.z == 7
