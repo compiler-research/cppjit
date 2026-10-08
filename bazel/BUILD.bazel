@@ -1,0 +1,19 @@
+# Explicit load instead of the native symbol: consumers may build with
+# Starlark rule autoloads disabled.
+load("@rules_python//python:defs.bzl", "py_library")
+
+exports_files([
+    "llvm.bzl",
+    "defs.bzl",
+    "rules.bzl",
+])
+
+# Shim that fixes the hermetic interpreter's stale sysconfig INCLUDEPY;
+# py_tests depend on it. imports=["."] puts this dir on sys.path, so
+# test_main.py can import it before it imports cppjit.
+py_library(
+    name = "sitecustomize",
+    srcs = ["sitecustomize.py"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+)
