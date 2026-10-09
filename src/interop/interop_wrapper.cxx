@@ -1100,6 +1100,12 @@ bool interop::HasVirtualDestructor(TCppScope_t scope) {
 interop::TCppIndex_t interop::GetNumBases(TCppScope_t klass) {
   // Get the total number of base classes that this class has.
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  // Cpp::GetNumBases() instantiates a class template specialization with
+  // diagnostics, printing an error for one that can't be defined, e.g. a
+  // specialization of a template that is only declared. IsComplete()
+  // instantiates it silently.
+  if (!Cpp::IsComplete(klass))
+    return 0;
   return Cpp::GetNumBases(klass);
 }
 
@@ -1160,28 +1166,26 @@ bool interop::IsSmartPtr(TCppScope_t klass) {
   return false;
 }
 
-bool interop::GetSmartPtrInfo(const std::string& tname, TCppScope_t* raw,
+bool interop::GetSmartPtrInfo(TCppScope_t klass, TCppScope_t* raw,
                               TCppMethod_t* deref) {
-  // TODO: We can directly accept scope instead of name
-  const std::string& rn = ResolveName(tname);
-  if (gSmartPtrTypes.find(rn.substr(0, rn.find("<"))) == gSmartPtrTypes.end())
+  TCppScope_t scope = interop::GetUnderlyingScope(klass);
+  if (!scope || !interop::IsSmartPtr(scope))
     return false;
 
   if (!raw && !deref)
     return true;
 
-  TCppScope_t scope = interop::GetScope(rn);
-  if (!scope)
-    return false;
-
   std::vector<TCppMethod_t> ops;
   {
     std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+    // the operator can only be found once the specialization is instantiated
+    if (!Cpp::IsComplete(scope))
+      return false;
     Cpp::GetOperator(scope, Cpp::Operator::OP_Arrow, ops,
                      /*kind=*/Cpp::OperatorArity::kBoth);
+    if (ops.size() != 1)
+      return false;
   }
-  if (ops.size() != 1)
-    return false;
 
   if (deref)
     *deref = ops[0];
