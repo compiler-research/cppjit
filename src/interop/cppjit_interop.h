@@ -289,6 +289,15 @@ RPY_EXPORTED
 TCppType_t GetFnTypeFromStdFn(TCppType_t fn_type);
 RPY_EXPORTED
 void GetFnTypeSig(TCppType_t fn_type, std::vector<TCppType_t>& arg_types);
+/// Spells out a function type, or a pointer or reference to one, as the
+/// return type and the parenthesized argument list, e.g. "int" and
+/// "(double, const char *)"; the argument list is formatted as by
+/// GetMethodSignature(). Member function pointers are not function pointers
+/// and are rejected.
+/// \returns false if \p fn_type is not a function (pointer) type.
+RPY_EXPORTED
+bool GetFnTypeSigAsString(TCppType_t fn_type, std::string& ret_type,
+                          std::string& signature);
 RPY_EXPORTED
 bool IsSameType(TCppType_t typ1, TCppType_t typ2);
 RPY_EXPORTED

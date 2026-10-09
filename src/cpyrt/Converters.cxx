@@ -26,7 +26,6 @@ using namespace cppjit;
 #include <cstddef>
 #include <limits.h>
 #include <locale> // for wstring_convert
-#include <regex>
 #include <sstream>
 #include <stddef.h> // for ptrdiff_t
 #include <string.h>
@@ -46,9 +45,6 @@ static ConvFactories_t gConvFactories;
 // special objects
 extern PyObject* gNullPtrObject;
 extern PyObject* gDefaultObject;
-
-// regular expression for matching function pointer
-static std::regex s_fnptr("\\((\\w*:*)*\\*&*\\)");
 } // namespace cppjit::cpyrt
 
 // Define our own PyUnstable_Object_IsUniqueReferencedTemporary function if the
@@ -3454,8 +3450,11 @@ cppjit::cpyrt::CreateConverter(const std::string& fullType, cdims_t dims) {
     return (h->second)(dims);
   }
 
-  // resolve typedefs etc.
-  const std::string& resolvedType = interop::ResolveName(fullType);
+  // resolve typedefs etc. (the type itself is kept for function pointers)
+  interop::TCppType_t type =
+      interop::GetType(fullType, /*enable_slow_lookup=*/true);
+  const std::string resolvedType =
+      type ? interop::GetTypeAsString(interop::ResolveType(type)) : fullType;
 
   // a full, qualified matching converter is preferred
   if (resolvedType != fullType) {
@@ -3615,16 +3614,10 @@ cppjit::cpyrt::CreateConverter(const std::string& fullType, cdims_t dims) {
         // -- Cling WORKAROUND
         result = selectInstanceCnv(klass, cpd, dims, isConst, control);
     }
-  } else {
-    std::smatch sm;
-    if (std::regex_search(resolvedType, sm, s_fnptr)) {
-      // this is a function pointer
-      auto pos1 = sm.position(0);
-      auto pos2 = resolvedType.rfind(')');
-      result = new FunctionPointerConverter(
-          resolvedType.substr(0, pos1),
-          resolvedType.substr(pos1 + sm.length(), pos2 - 1));
-    }
+  } else if (std::string fnRet, fnSig;
+             interop::GetFnTypeSigAsString(type, fnRet, fnSig)) {
+    // this is a function pointer
+    result = new FunctionPointerConverter(fnRet, fnSig);
   }
   const std::string failure_msg("Failed to convert type: " + fullType +
                                 "; resolved: " + resolvedType +
@@ -3856,17 +3849,10 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
   // converters for known C++ classes and default (void*)
   Converter* result = nullptr;
   interop::TCppScope_t klass = interop::GetScopeFromType(realType);
-  if (resolvedTypeStr.find("(*)") != std::string::npos ||
-      (resolvedTypeStr.find("::*)") != std::string::npos)) {
-    // this is a function function pointer
-    // TODO: find better way of finding the type
-    auto pos1 = resolvedTypeStr.find('(');
-    auto pos2 = resolvedTypeStr.find("*)");
-    auto pos3 = resolvedTypeStr.rfind(')');
-    std::string return_type = resolvedTypeStr.substr(0, pos1);
-    result = new FunctionPointerConverter(
-        return_type.erase(return_type.find_last_not_of(" ") + 1),
-        resolvedTypeStr.substr(pos2 + 2, pos3 - pos2 - 1));
+  if (std::string fnRet, fnSig;
+      interop::GetFnTypeSigAsString(resolvedType, fnRet, fnSig)) {
+    // this is a function pointer
+    result = new FunctionPointerConverter(fnRet, fnSig);
   } else if ((realTypeStr != "std::byte") &&
              (klass || (klass = interop::GetFullScope(realTypeStr)))) {
     // std::byte is a special enum class used to access raw memory
