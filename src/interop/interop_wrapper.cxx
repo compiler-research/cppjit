@@ -1228,14 +1228,25 @@ ptrdiff_t interop::GetBaseOffset(TCppScope_t derived, TCppScope_t base,
                                  TCppObject_t address, int direction,
                                  bool rerror) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
-  intptr_t offset = Cpp::GetBaseClassOffset(derived, base);
+
+  // For up-casts, pass the address to GetBaseClassOffset which will read from
+  // the vtable/vbtable when the path goes through a virtual base.
+  // For down-casts (direction < 0), the address points to the base and we need
+  // dynamic_cast behavior, which the generated helper provides.
+  intptr_t offset;
+  if (direction > 0 && address) {
+    offset = Cpp::GetBaseClassOffset(derived, base, address.data);
+  } else {
+    offset = Cpp::GetBaseClassOffset(derived, base);
+  }
 
   if (offset == -1) // Cling error, treat silently
     return rerror ? (ptrdiff_t)offset : 0;
 
+  // For down-casts we still need the generated helper to perform dynamic_cast
   static std::map<std::pair<const void*, const void*>, BaseOffsetFunc_t>
       s_vbase_offset_funcs;
-  if (address && Cpp::IsBaseReachedVirtually(derived, base)) {
+  if (address && direction < 0) {
     const auto key = std::make_pair(derived.data, base.data);
     auto func = s_vbase_offset_funcs.find(key);
     if (func == s_vbase_offset_funcs.end())
