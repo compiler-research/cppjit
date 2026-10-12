@@ -57,6 +57,8 @@ std::string ResolveName(const std::string& cppitem_name);
 RPY_EXPORTED
 TCppType_t ResolveType(TCppType_t cppitem_name);
 RPY_EXPORTED
+TCppType_t GetUnderlyingType(TCppType_t type);
+RPY_EXPORTED
 TCppType_t ResolveEnumReferenceType(TCppType_t type);
 RPY_EXPORTED
 TCppType_t ResolveEnumPointerType(TCppType_t type);
@@ -388,6 +390,9 @@ long long GetEnumDataValue(TCppScope_t scope);
 RPY_EXPORTED
 TCppScope_t InstantiateTemplate(TCppScope_t tmpl, Cpp::TemplateArgInfo* args,
                                 size_t args_size);
+RPY_EXPORTED
+void GetClassTemplateInstantiationArgs(TCppScope_t templ_instance,
+                                       std::vector<Cpp::TemplateArgInfo>& args);
 
 RPY_EXPORTED
 void DumpScope(TCppScope_t scope);

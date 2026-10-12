@@ -515,6 +515,9 @@ class InitializerListConverter : public InstanceConverter {
 public:
   InitializerListConverter(interop::TCppScope_t klass,
                            std::string const& value_type);
+  InitializerListConverter(interop::TCppScope_t klass,
+                           std::string const& value_type,
+                           interop::TCppType_t value_ctype);
   InitializerListConverter(const InitializerListConverter&) = delete;
   InitializerListConverter& operator=(const InitializerListConverter&) = delete;
   virtual ~InitializerListConverter();
