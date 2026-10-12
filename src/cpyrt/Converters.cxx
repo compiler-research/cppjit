@@ -459,7 +459,7 @@ static inline bool CArraySetArg(PyObject* pyobject, cpyrt::Parameter& para,
   if (cpyrt::LowLevelView_Check(pyobject)) {
     auto llview = ((cpyrt::LowLevelView*)pyobject);
     if (llview->fBufInfo.itemsize != size ||
-        !strchr(llview->fBufInfo.format, tc)) {
+        !cpyrt::Utility::BufferFormatCompatible(tc, llview->fBufInfo.format)) {
       PyErr_Format(PyExc_TypeError,
                    "could not convert argument to buffer or nullptr");
       return false;
@@ -1759,7 +1759,7 @@ bool cpyrt::StdSpanConverter::SetArg(PyObject* pyobject, Parameter& para,
   memset(&fBufinfo, 0, sizeof(Py_buffer));
 
   if (PyObject_GetBuffer(pyobject, &fBufinfo, PyBUF_FORMAT) == 0) {
-    if (!strchr(fBufinfo.format, typecode)) {
+    if (!Utility::BufferFormatCompatible(typecode, fBufinfo.format)) {
       PyErr_Format(PyExc_TypeError,
                    "buffer has incompatible type: expected '%c' for C++ type "
                    "'%s', but got format '%s'",
@@ -1850,7 +1850,8 @@ bool ToArrayFromBuffer(PyObject* owner, void* address, PyObject* ctxt,
         convOk = true;                                                         \
       } else if (LowLevelView_Check(pyobject) &&                               \
                  ((LowLevelView*)pyobject)->fBufInfo.ndim == 2 &&              \
-                 strchr(((LowLevelView*)pyobject)->fBufInfo.format, code)) {   \
+                 Utility::BufferFormatCompatible(                              \
+                     code, ((LowLevelView*)pyobject)->fBufInfo.format)) {      \
         para.fValue.fVoidp = ((LowLevelView*)pyobject)->get_buf();             \
         para.fTypeCode = 'p';                                                  \
         convOk = true;                                                         \
@@ -1877,7 +1878,8 @@ bool ToArrayFromBuffer(PyObject* owner, void* address, PyObject* ctxt,
           convOk = true;                                                       \
         }                                                                      \
       } else if (LowLevelView_Check(pyobject) &&                               \
-                 strchr(((LowLevelView*)pyobject)->fBufInfo.format, code)) {   \
+                 Utility::BufferFormatCompatible(                              \
+                     code, ((LowLevelView*)pyobject)->fBufInfo.format)) {      \
         para.fValue.fVoidp = ((LowLevelView*)pyobject)->get_buf();             \
         para.fTypeCode = 'p';                                                  \
         convOk = true;                                                         \
