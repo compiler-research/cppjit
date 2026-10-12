@@ -768,8 +768,16 @@ interop::TCppScope_t interop::GetScope(const std::string& name,
   // We require lazy module loading that ROOT relies on, so we do it here
   // first. Use TClass::GetClass to trigger auto-loading of dictionaries and
   // modules.
+  // This also covers nested names: declarations come from the C++ modules,
+  // so e.g. ROOT::RDF can be used before its libraries are loaded, and the
+  // JIT then finds their symbols only by scanning every library on the
+  // search path (about half a second).
   if (!parent_scope || parent_scope == Cpp::GetGlobalScope())
     TClass::GetClass(name.c_str(), true /* load */, true /* silent */);
+  else if (Cpp::IsNamespace(parent_scope) || Cpp::IsClass(parent_scope))
+    TClass::GetClass(
+        (Cpp::GetQualifiedCompleteName(parent_scope) + "::" + name).c_str(),
+        true /* load */, true /* silent */);
 
   if (interop::TCppScope_t scope = Cpp::GetScope(name, parent_scope))
     return scope;
