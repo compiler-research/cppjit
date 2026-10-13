@@ -525,7 +525,21 @@ int cpyrt::CPPMethod::GetPriority() {
 
       // prefer more derived classes
       const std::string& clean_name = TypeManip::clean_type(aname, false);
-      interop::TCppScope_t scope = interop::GetScope(clean_name);
+      interop::TCppScope_t scope = nullptr;
+      if (clean_name.find('<') != std::string::npos &&
+          clean_name.find("initializer_list") == std::string::npos) {
+        // Resolving a template name from its spelling declares new code in
+        // the interpreter on every call, so take the class from the argument
+        // type instead, and force its definition like GetScope() does.
+        // GetScope() deliberately resolves std::initializer_list<T> as
+        // std::vector<T>, which the ranking relies on, so those still go
+        // through GetScope().
+        scope = interop::GetScopeFromType(interop::GetUnderlyingType(
+            interop::GetMethodArgType(fMethod, iarg)));
+        if (scope)
+          interop::IsComplete(scope);
+      } else
+        scope = interop::GetScope(clean_name);
       if (scope)
         priority += static_cast<int>(interop::GetNumBasesLongestBranch(scope));
 

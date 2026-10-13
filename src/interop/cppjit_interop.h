@@ -57,6 +57,8 @@ std::string ResolveName(const std::string& cppitem_name);
 RPY_EXPORTED
 TCppType_t ResolveType(TCppType_t cppitem_name);
 RPY_EXPORTED
+TCppType_t GetUnderlyingType(TCppType_t type);
+RPY_EXPORTED
 TCppType_t ResolveEnumReferenceType(TCppType_t type);
 RPY_EXPORTED
 TCppType_t ResolveEnumPointerType(TCppType_t type);
