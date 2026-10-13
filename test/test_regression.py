@@ -1778,3 +1778,23 @@ class TestREGRESSION:
         # member function pointers are not function pointers; they are not
         # supported, but must not crash either
         ns.get_mf()
+
+    def test58_repeated_enum_constant_template_argument(self):
+        """A template argument spelled as an enum constant resolves repeatedly"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace RepeatedEnumArg {
+            enum E { A = 1, B = 2 };
+            template <E e> struct T1 { static constexpr int v = (int)e; };
+            template <E e> struct T2 { static constexpr int v = (int)e; };
+        }""")
+
+        ns = cppjit.gbl.RepeatedEnumArg
+
+        # the resolved argument is memoized by name; its integral value is a
+        # string the first instantiation frees, so the second needs its own
+        assert ns.T1["RepeatedEnumArg::E::A"].v == 1
+        assert ns.T2["RepeatedEnumArg::E::A"].v == 1
+        assert ns.T2["RepeatedEnumArg::E::B"].v == 2
