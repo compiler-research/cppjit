@@ -1378,11 +1378,39 @@ interop::TCppType_t interop::GetFnTypeFromStdFn(TCppType_t fn_type) {
 
 void interop::GetFnTypeSig(TCppType_t fn_type,
                            std::vector<TCppType_t>& arg_types) {
+  if (!fn_type)
+    return;
   fn_type = Cpp::IsReferenceType(fn_type) ? Cpp::GetNonReferenceType(fn_type)
                                           : fn_type;
   fn_type =
       Cpp::IsPointerType(fn_type) ? Cpp::GetPointeeType(fn_type) : fn_type;
+  // Cpp::GetFnTypeSignature() requires a function prototype: anything else
+  // (e.g. a member function pointer, or a plain object type) yields nothing
+  if (!Cpp::IsFunctionProtoType(fn_type))
+    return;
   Cpp::GetFnTypeSignature(fn_type, arg_types);
+}
+
+bool interop::GetFnTypeSigAsString(TCppType_t fn_type, std::string& ret_type,
+                                   std::string& signature) {
+  // the first entry is the return type, followed by the argument types
+  std::vector<TCppType_t> types;
+  GetFnTypeSig(fn_type, types);
+  if (types.empty())
+    return false;
+
+  ret_type = GetTypeAsString(types[0]);
+
+  std::ostringstream sig;
+  sig << "(";
+  for (std::size_t iarg = 1; iarg < types.size(); ++iarg) {
+    if (iarg != 1)
+      sig << ", ";
+    sig << GetTypeAsString(types[iarg]);
+  }
+  sig << ")";
+  signature = sig.str();
+  return true;
 }
 
 bool interop::IsSameType(TCppType_t typ1, TCppType_t typ2) {

@@ -1727,3 +1727,48 @@ class TestREGRESSION:
 
         assert ns.pick(ns.S.A) == 1
         assert ns.pick(ns.S.B) == 5
+
+    def test57_function_pointer_types_from_ast(self):
+        """Function pointer return and argument types are taken from the AST"""
+
+        import cppjit
+
+        cppjit.cppdef(r"""\
+        namespace FnPtrTypes {
+            unsigned int one() { return 1u; }
+            typedef unsigned int (*uf_t)();
+            uf_t get_one() { return one; }
+            unsigned int call(uf_t f) { return f() + 1; }
+
+            double scale(double x, const char* s) { return x * (s[0] - '0'); }
+            typedef double (*sf_t)(double, const char*);
+            sf_t get_scale() { return scale; }
+            double apply(sf_t f, double x, const char* s) { return f(x, s); }
+
+            int noop(int i) noexcept { return i; }
+            typedef int (*nf_t)(int) noexcept;
+            nf_t get_noop() { return noop; }
+
+            struct M { int f(double) { return 42; } };
+            typedef int (M::*mf_t)(double);
+            mf_t get_mf() { return &M::f; }
+        }""")
+
+        ns = cppjit.gbl.FnPtrTypes
+
+        # multi-word return type (was mangled to "unsignedint" by string parsing)
+        assert ns.get_one()() == 1
+        assert ns.call(ns.one) == 2
+        assert ns.call(lambda: 5) == 6
+
+        # multi-word and pointer argument types
+        assert ns.get_scale()(2.0, "3") == 6.0
+        assert ns.apply(ns.scale, 2.0, "4") == 8.0
+        assert ns.apply(lambda x, s: x + 1, 2.0, "4") == 3.0
+
+        # noexcept function pointers
+        assert ns.get_noop()(7) == 7
+
+        # member function pointers are not function pointers; they are not
+        # supported, but must not crash either
+        ns.get_mf()
