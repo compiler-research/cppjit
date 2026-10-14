@@ -1727,3 +1727,51 @@ class TestREGRESSION:
 
         assert ns.pick(ns.S.A) == 1
         assert ns.pick(ns.S.B) == 5
+
+    def test57_repeated_enum_constant_template_argument(self):
+        """A template argument spelled as an enum constant resolves repeatedly"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace RepeatedEnumArg {
+            enum E { A = 1, B = 2 };
+            template <E e> struct T1 { static constexpr int v = (int)e; };
+            template <E e> struct T2 { static constexpr int v = (int)e; };
+        }""")
+
+        ns = cppjit.gbl.RepeatedEnumArg
+
+        # the resolved argument is memoized by name; its integral value is a
+        # string the first instantiation frees, so the second needs its own
+        assert ns.T1["RepeatedEnumArg::E::A"].v == 1
+        assert ns.T2["RepeatedEnumArg::E::A"].v == 1
+        assert ns.T2["RepeatedEnumArg::E::B"].v == 2
+
+    def test58_repeated_implicit_tuple_conversion(self):
+        """Repeated implicit tuple-to-pair conversion does not grow the overload set"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        #include <utility>
+        namespace RepeatedImplicitTuple {
+            int first(std::pair<int, int>&& p) { return p.first; }
+        }""")
+
+        ns = cppjit.gbl.RepeatedImplicitTuple
+        pair = cppjit.gbl.std.pair["int", "int"]
+
+        def n_ctor_overloads():
+            # the instantiated converting constructor is cached on the class
+            # under the constructor's own name
+            ol = pair.__dict__.get("pair")
+            return len(ol.__doc__.split("\n")) if ol is not None else 0
+
+        assert ns.first((1, 2)) == 1
+        n = n_ctor_overloads()
+        assert n > 0
+
+        for i in range(20):
+            assert ns.first((i, 2)) == i
+        assert n_ctor_overloads() == n
