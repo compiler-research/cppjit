@@ -1727,3 +1727,23 @@ class TestREGRESSION:
 
         assert ns.pick(ns.S.A) == 1
         assert ns.pick(ns.S.B) == 5
+
+    def test57_repeated_enum_constant_template_argument(self):
+        """A template argument spelled as an enum constant resolves repeatedly"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace RepeatedEnumArg {
+            enum E { A = 1, B = 2 };
+            template <E e> struct T1 { static constexpr int v = (int)e; };
+            template <E e> struct T2 { static constexpr int v = (int)e; };
+        }""")
+
+        ns = cppjit.gbl.RepeatedEnumArg
+
+        # the resolved argument is memoized by name; its integral value is a
+        # string the first instantiation frees, so the second needs its own
+        assert ns.T1["RepeatedEnumArg::E::A"].v == 1
+        assert ns.T2["RepeatedEnumArg::E::A"].v == 1
+        assert ns.T2["RepeatedEnumArg::E::B"].v == 2

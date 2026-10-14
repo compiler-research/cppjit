@@ -524,6 +524,36 @@ bool interop::AppendTypesSlow(const std::string& name,
 
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
 
+  // Every lookup below declares code through the interpreter, which parses,
+  // commits a transaction and leaves a new declaration in the AST, so each one
+  // costs more than the last. The same names come back constantly (overload
+  // ranking resolves every argument type of every candidate on each call that
+  // is not memoized), so remember what a name resolved to. A name that fails
+  // may still resolve once more declarations are available, so only successes
+  // are cached.
+  using SlowTypesKey = std::pair<std::string, const void*>;
+  static std::map<SlowTypesKey, std::vector<Cpp::TemplateArgInfo>> s_cache;
+  const SlowTypesKey cache_key{name, parent.data};
+  // the integral values are strings whose ownership passes to the caller
+  // (which frees them), so the cache keeps and hands out copies of its own
+  auto copy_of = [](const Cpp::TemplateArgInfo& info) {
+    return Cpp::TemplateArgInfo(info.m_Type, info.m_IntegralValue
+                                                 ? strdup(info.m_IntegralValue)
+                                                 : nullptr);
+  };
+  if (auto cached = s_cache.find(cache_key); cached != s_cache.end()) {
+    for (const Cpp::TemplateArgInfo& info : cached->second)
+      types.push_back(copy_of(info));
+    return false;
+  }
+  const size_t n_types_before = types.size();
+  auto remember = [&] {
+    std::vector<Cpp::TemplateArgInfo> resolved;
+    for (size_t i = n_types_before; i < types.size(); ++i)
+      resolved.push_back(copy_of(types[i]));
+    s_cache.emplace(cache_key, std::move(resolved));
+  };
+
   // We might have an entire expression such as int, double.
   static unsigned long long struct_count = 0;
   std::string code =
@@ -554,7 +584,10 @@ bool interop::AppendTypesSlow(const std::string& name,
       TCppScope_t instance_class = Cpp::GetScopeFromType(varN);
       size_t oldSize = types.size();
       Cpp::GetClassTemplateInstantiationArgs(instance_class, types);
-      return oldSize == types.size();
+      if (oldSize == types.size())
+        return true;
+      remember();
+      return false;
     }
   }
 
@@ -593,6 +626,7 @@ bool interop::AppendTypesSlow(const std::string& name,
             strdup(std::to_string(Cpp::GetEnumConstantValue(scope)).c_str());
     types.emplace_back(type.data, integral_value);
   }
+  remember();
   return false;
 }
 
