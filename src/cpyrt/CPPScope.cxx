@@ -50,13 +50,8 @@ add_template(PyObject* pyclass, const std::string& name,
   }
 
   if (overloads) {
-    // adopt the new overloads
-    if (ncl != name)
-      for (auto clb : *overloads)
-        pytmpl->AdoptTemplate(clb);
-    else
-      for (auto clb : *overloads)
-        pytmpl->AdoptMethod(clb);
+    for (auto clb : *overloads)
+      pytmpl->AdoptMethod(clb);
   }
 
   // the caller expects a method matching the full name, thus is a
@@ -401,7 +396,7 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
         if (interop::ExistsMethodTemplate(scope, name))
           attr = add_template(pyclass, name, &overloads);
         else
-          attr = (PyObject*)CPPOverload_New(name, overloads);
+          attr = (PyObject*)CPPOverload_New(name, scope, overloads);
         templated_functions_checked = true;
       }
     }
@@ -595,7 +590,6 @@ static PyObject* meta_reflex(CPPScope* klass, PyObject* args) {
     if (klass->fFlags & CPPScope::kIsNamespace)
       Py_RETURN_TRUE;
     Py_RETURN_FALSE;
-    break;
   case interop::Reflex::IS_AGGREGATE:
     // this is not the strict C++ definition of aggregates, but is closer to
     // what is needed for Numba and C calling conventions (TODO: probably have
@@ -604,7 +598,6 @@ static PyObject* meta_reflex(CPPScope* klass, PyObject* args) {
         !interop::HasVirtualDestructor(klass->fCppType))
       Py_RETURN_TRUE;
     Py_RETURN_FALSE;
-    break;
   }
 
   PyErr_Format(PyExc_ValueError, "unsupported reflex request %d or format %d",
