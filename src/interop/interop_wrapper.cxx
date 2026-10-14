@@ -1294,6 +1294,14 @@ std::string interop::GetMethodArgCanonTypeAsString(TCppMethod_t method,
       Cpp::GetCanonicalType(Cpp::GetFunctionArgType(method, iarg)));
 }
 
+std::string interop::GetMethodArgCanonUnqualTypeAsString(TCppMethod_t method,
+                                                         TCppIndex_t iarg) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::GetTypeAsString(Cpp::RemoveTypeQualifier(
+      Cpp::GetCanonicalType(Cpp::GetFunctionArgType(method, iarg)),
+      Cpp::QualKind::Const | Cpp::QualKind::Volatile));
+}
+
 std::string interop::GetMethodArgDefault(TCppMethod_t method,
                                          TCppIndex_t iarg) {
   if (!method)
@@ -1413,6 +1421,13 @@ bool interop::IsConstMethod(TCppMethod_t method) {
     return false;
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::IsConstMethod(method);
+}
+
+bool interop::IsVirtualMethod(TCppMethod_t method) {
+  if (!method)
+    return false;
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::IsVirtualMethod(method);
 }
 
 void interop::GetTemplatedMethods(TCppScope_t scope,

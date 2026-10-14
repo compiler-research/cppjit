@@ -278,6 +278,11 @@ std::string GetMethodArgTypeAsString(TCppMethod_t method, TCppIndex_t iarg);
 RPY_EXPORTED
 std::string GetMethodArgCanonTypeAsString(TCppMethod_t method,
                                           TCppIndex_t iarg);
+// canonical type with top-level cv-qualifiers removed, as it figures in the
+// function type (`f(const int)` and `f(int)` are the same overload)
+RPY_EXPORTED
+std::string GetMethodArgCanonUnqualTypeAsString(TCppMethod_t method,
+                                                TCppIndex_t iarg);
 RPY_EXPORTED
 std::string GetMethodArgDefault(TCppMethod_t, TCppIndex_t iarg);
 RPY_EXPORTED
@@ -297,6 +302,8 @@ RPY_EXPORTED
 std::string GetDoxygenComment(TCppScope_t scope, bool strip_markers = true);
 RPY_EXPORTED
 bool IsConstMethod(TCppMethod_t);
+RPY_EXPORTED
+bool IsVirtualMethod(TCppMethod_t);
 // Templated method/function reflection information
 // ------------------------------------
 RPY_EXPORTED
