@@ -78,6 +78,9 @@ namespace cppjit::cpyrt {
                                                                                \
   X(gExPythonize, "__cppjit_explicit_pythonize__")                             \
   X(gPythonize, "__cppjit_pythonize__")                                        \
+  /* old cppyy names, see the legacy API section in Compatibility.h */         \
+  X(gCppyyExPythonize, "__cppyy_explicit_pythonize__")                         \
+  X(gCppyyPythonize, "__cppyy_pythonize__")                                    \
                                                                                \
   X(gArray, "__array__")                                                       \
   X(gDType, "dtype")                                                           \
