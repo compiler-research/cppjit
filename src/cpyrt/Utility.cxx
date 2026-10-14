@@ -413,6 +413,68 @@ static inline std::string AnnotationAsText(PyObject* pyobj) {
   return PyUnicode_AsUTF8(pyobj);
 }
 
+static inline std::string AnnotationAsCppType(PyObject* pyobj, bool scoped) {
+  if (pyobj == Py_None)
+    return "void";
+  if (cpyrt::CPPScope_Check(pyobj)) {
+    const std::string& name = cpyrt::Utility::ClassName(pyobj);
+    return scoped ? full_scope(name) : name;
+  }
+  return AnnotationAsText(pyobj);
+}
+
+//----------------------------------------------------------------------------
+std::string cpyrt::Utility::AnnotatedSignature(PyObject* pycallable) {
+  // Read the signature declared by the __annotations__ of a Python callable:
+  // a return annotation and at least one argument annotation are needed, the
+  // argument types are taken in declaration order.
+  PyObject* annot = PyObject_GetAttr(pycallable, PyStrings::gAnnotations);
+  if (!annot) {
+    PyErr_Clear();
+    return "";
+  }
+
+  std::string sig;
+  if (PyDict_Check(annot) && 1 < PyDict_Size(annot)) {
+    PyObject* pyret = PyDict_GetItemString(annot, "return");
+    // dict is ordered, with the last value being the return type
+    PyObject* values = pyret ? PyDict_Values(annot) : nullptr;
+    if (values) {
+      sig = AnnotationAsCppType(pyret, /*scoped=*/false) + " (*)(";
+      for (Py_ssize_t i = 0; i < (PyList_GET_SIZE(values) - 1); ++i) {
+        if (i)
+          sig += ", ";
+        sig += AnnotationAsCppType(PyList_GET_ITEM(values, i), /*scoped=*/true);
+      }
+      sig += ')';
+      Py_DECREF(values);
+    } else
+      PyErr_Clear();
+  }
+
+  Py_DECREF(annot);
+  return sig;
+}
+
+//----------------------------------------------------------------------------
+interop::TCppType_t
+cpyrt::Utility::AnnotatedSignatureType(const std::string& signature) {
+  // Resolve a signature spelled by annotations to the function pointer type
+  // it names. The lookup goes through the interpreter, so its result is kept
+  // per spelling; a failed lookup is not, as a later declaration may make the
+  // spelling valid.
+  static std::unordered_map<std::string, interop::TCppType_t> sTypes;
+  auto it = sTypes.find(signature);
+  if (it != sTypes.end())
+    return it->second;
+
+  interop::TCppType_t type =
+      interop::GetType(signature, /*enable_slow_lookup=*/true);
+  if (type)
+    sTypes[signature] = type;
+  return type;
+}
+
 static bool AddTypeName(std::string& tmpl_name, PyObject* tn, PyObject* arg,
                         cpyrt::Utility::ArgPreference pref,
                         int* pcnt = nullptr) {
@@ -511,38 +573,11 @@ static bool AddTypeName(std::string& tmpl_name, PyObject* tn, PyObject* arg,
 
   if (arg && PyCallable_Check(arg)) {
     // annotated/typed Python function
-    PyObject* annot = PyObject_GetAttr(arg, PyStrings::gAnnotations);
-    if (annot) {
-      if (PyDict_Check(annot) && 1 < PyDict_Size(annot)) {
-        PyObject* ret = PyDict_GetItemString(annot, "return");
-        if (ret) {
-          // dict is ordered, with the last value being the return type
-          std::ostringstream tpn;
-          tpn << (CPPScope_Check(ret) ? ClassName(ret) : AnnotationAsText(ret))
-              << " (*)(";
-
-          PyObject* values = PyDict_Values(annot);
-          for (Py_ssize_t i = 0; i < (PyList_GET_SIZE(values) - 1); ++i) {
-            if (i)
-              tpn << ", ";
-            PyObject* item = PyList_GET_ITEM(values, i);
-            tpn << (CPPScope_Check(item) ? full_scope(ClassName(item))
-                                         : AnnotationAsText(item));
-          }
-          Py_DECREF(values);
-
-          tpn << ')';
-          tmpl_name.append(tpn.str());
-
-          Py_DECREF(annot);
-          return true;
-
-        } else
-          PyErr_Clear();
-      }
-      Py_DECREF(annot);
-    } else
-      PyErr_Clear();
+    const std::string& sig = AnnotatedSignature(arg);
+    if (!sig.empty()) {
+      tmpl_name.append(sig);
+      return true;
+    }
 
     // ctypes function pointer
     PyObject* argtypes = nullptr;
@@ -771,40 +806,12 @@ static bool AddTypeName(std::vector<Cpp::TemplateArgInfo>& types, PyObject* tn,
   }
 
   if (arg && PyCallable_Check(arg)) {
-    PyObject* annot = PyObject_GetAttr(arg, PyStrings::gAnnotations);
-    if (annot) {
-      if (PyDict_Check(annot) && 1 < PyDict_Size(annot)) {
-        PyObject* ret = PyDict_GetItemString(annot, "return");
-        if (ret) {
-          // dict is ordered, with the last value being the return type
-          std::ostringstream tpn;
-          tpn << (CPPScope_Check(ret) ? ClassName(ret) : PyUnicode_AsUTF8(ret))
-              << " (*)(";
-
-          PyObject* values = PyDict_Values(annot);
-          for (Py_ssize_t i = 0; i < (PyList_GET_SIZE(values) - 1); ++i) {
-            if (i)
-              tpn << ", ";
-            PyObject* item = PyList_GET_ITEM(values, i);
-            tpn << (CPPScope_Check(item) ? ClassName(item)
-                                         : PyUnicode_AsUTF8(item));
-          }
-          Py_DECREF(values);
-
-          tpn << ')';
-          // tmpl_name.append(tpn.str());
-          // FIXME: find a way to add it to types
-          throw std::runtime_error(
-              "This path is not yet implemented (AddTypeName) \n");
-
-          return true;
-
-        } else
-          PyErr_Clear();
-      }
-      Py_DECREF(annot);
-    } else
-      PyErr_Clear();
+    // annotated/typed Python function
+    if (!AnnotatedSignature(arg).empty()) {
+      // FIXME: find a way to add the function pointer type to types
+      throw std::runtime_error(
+          "This path is not yet implemented (AddTypeName) \n");
+    }
 
     PyObject* tpName = PyObject_GetAttr(arg, PyStrings::gCppName);
     if (tpName) {

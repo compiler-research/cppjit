@@ -448,8 +448,9 @@ public:
 // function pointers
 class FunctionPointerConverter : public Converter {
 public:
-  FunctionPointerConverter(const std::string& ret, const std::string& sig)
-      : fRetType(ret), fSignature(sig) {}
+  FunctionPointerConverter(const std::string& ret, const std::string& sig,
+                           interop::TCppType_t fntype = nullptr)
+      : fRetType(ret), fSignature(sig), fFnType(fntype) {}
 
 public:
   bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) override;
@@ -459,8 +460,13 @@ public:
   std::string GetFailureMsg() override { return "[FunctionPointerConverter]"; };
 
 protected:
+  bool AnnotationsMatch(PyObject*) const;
+  bool ConvertCallable(PyObject*, Parameter&, CallContext*);
+
+protected:
   std::string fRetType;
   std::string fSignature;
+  interop::TCppType_t fFnType; // function (pointer) type converted to, if known
   bool fAllowCppInstance = false;
 };
 

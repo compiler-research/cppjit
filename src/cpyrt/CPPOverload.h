@@ -12,6 +12,9 @@
 
 namespace cppjit::cpyrt {
 
+// hash of the __annotations__ of a Python function or bound method
+uint64_t HashAnnotations(PyObject* pyfunc);
+
 // signature hashes are also used by TemplateProxy
 inline uint64_t HashSignature(cpyrt_PyArgs_t args, size_t nargsf) {
   // Build a hash from the types of the given python function arguments.
@@ -23,6 +26,10 @@ inline uint64_t HashSignature(cpyrt_PyArgs_t args, size_t nargsf) {
     // the improved overloads for implicit conversions
     PyObject* pyobj = cpyrt_PyArgs_GET_ITEM(args, i);
     hash += (uint64_t)Py_TYPE(pyobj);
+    // all Python functions share one type, but their annotations select the
+    // overload or template instantiation they convert to
+    if (PyFunction_Check(pyobj) || PyMethod_Check(pyobj))
+      hash += HashAnnotations(pyobj);
 #if PY_VERSION_HEX >= 0x030e0000
     hash +=
         (uint64_t)(PyUnstable_Object_IsUniqueReferencedTemporary(pyobj) ? 1
