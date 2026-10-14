@@ -57,6 +57,16 @@ inline PyObject* CT2CppName(PyObject* pytc, const char* cpd, bool allow_voidp) {
   return nullptr;
 }
 
+// function pointer type declared by the __annotations__ of a Python callable,
+// in C++ spelling ("ret (*)(args)": the annotations are taken as C++ type
+// names, Python types by their name, None as void); empty if they do not
+// declare a full signature
+std::string AnnotatedSignature(PyObject* pycallable);
+
+// the type spelled by such a signature, as resolved by the interpreter and
+// cached per spelling; nullptr if the spelling is not a type it knows
+interop::TCppType_t AnnotatedSignatureType(const std::string& signature);
+
 // helper for generating callbacks
 void ConstructCallbackPreamble(const std::string& retType,
                                const std::vector<std::string>& argtypes,

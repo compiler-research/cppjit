@@ -901,6 +901,38 @@ static PyMethodDef mp_methods[] = {
 
 } // unnamed namespace
 
+//= cpyrt signature hashing ===============================================
+uint64_t HashAnnotations(PyObject* pyfunc) {
+  // Hash the values of the __annotations__ of a Python callable in order, as
+  // they declare the C++ function type it converts to (see AnnotatedSignature).
+  PyObject* annot = PyObject_GetAttr(pyfunc, PyStrings::gAnnotations);
+  if (!annot) {
+    PyErr_Clear();
+    return 0;
+  }
+
+  uint64_t hash = 0;
+  if (PyDict_Check(annot)) {
+    Py_ssize_t pos = 0;
+    PyObject *key, *value;
+    while (PyDict_Next(annot, &pos, &key, &value)) {
+      // strings cache their hash, types hash by identity, generic aliases such
+      // as list[int] by content (a new object on each evaluation)
+      Py_hash_t h = PyObject_Hash(value);
+      if (h == -1) {
+        PyErr_Clear();
+        h = (Py_hash_t)(uintptr_t)value;
+      }
+      hash += (uint64_t)h;
+      hash += (hash << 10);
+      hash ^= (hash >> 6);
+    }
+  }
+
+  Py_DECREF(annot);
+  return hash;
+}
+
 //= cpyrt method proxy type ===============================================
 PyTypeObject CPPOverload_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type,

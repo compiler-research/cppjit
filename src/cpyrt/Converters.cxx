@@ -2990,6 +2990,26 @@ static void* PyFunction_AsCPointer(PyObject* pyobject,
   return nullptr;
 }
 
+bool cpyrt::FunctionPointerConverter::AnnotationsMatch(
+    PyObject* pyobject) const {
+  // Whether the __annotations__ of a Python function declare the function type
+  // being converted to; callables without such a declaration match any, as
+  // does a converter that does not know its type. Template argument deduction
+  // derives the instantiation from these annotations, so a mismatch means that
+  // the callable belongs to a different instantiation (or overload). The
+  // declared signature is compared as a type, resolved once per spelling, so
+  // typedefs and qualification do not have to match the parameter's.
+  if (!fFnType || !(PyFunction_Check(pyobject) || PyMethod_Check(pyobject)))
+    return true;
+
+  const std::string& sig = Utility::AnnotatedSignature(pyobject);
+  if (sig.empty())
+    return true;
+
+  interop::TCppType_t declared = Utility::AnnotatedSignatureType(sig);
+  return declared && interop::IsSimilarFnTypes(declared, fFnType);
+}
+
 bool cpyrt::FunctionPointerConverter::SetArg(PyObject* pyobject,
                                              Parameter& para,
                                              CallContext* ctxt) {
@@ -3000,7 +3020,22 @@ bool cpyrt::FunctionPointerConverter::SetArg(PyObject* pyobject,
     return true;
   }
 
-  // normal case, get a function pointer
+  // a Python callable whose annotations declare a different function type is
+  // wrapped in the implicit round only, as the wrapper converts the arguments
+  // and the return value
+  if (ctxt && !AllowImplicit(ctxt) && !AnnotationsMatch(pyobject)) {
+    if (!NoImplicit(ctxt))
+      ctxt->fFlags |= CallContext::kHaveImplicit;
+    return false;
+  }
+
+  return ConvertCallable(pyobject, para, ctxt);
+}
+
+bool cpyrt::FunctionPointerConverter::ConvertCallable(PyObject* pyobject,
+                                                      Parameter& para,
+                                                      CallContext* ctxt) {
+  // get a function pointer for any callable, Python ones through a wrapper
   void* fptr =
       PyFunction_AsCPointer(pyobject, fRetType, fSignature, fAllowCppInstance);
   if (fptr) {
@@ -3054,8 +3089,10 @@ bool cpyrt::StdFunctionConverter::SetArg(PyObject* pyobject, Parameter& para,
 
   PyErr_Clear();
 
-  // else create a wrapper function
-  if (this->FunctionPointerConverter::SetArg(pyobject, para, ctxt)) {
+  // else create a wrapper function; a std::function takes any callable whose
+  // arguments and result convert, so unlike for a function pointer the
+  // annotations of a Python callable need not spell the signature
+  if (ConvertCallable(pyobject, para, ctxt)) {
     // retrieve the wrapper pointer and capture it in a temporary std::function,
     // then try normal conversion a second time
     PyObject* func =
@@ -3623,7 +3660,8 @@ cppjit::cpyrt::CreateConverter(const std::string& fullType, cdims_t dims) {
       auto pos2 = resolvedType.rfind(')');
       result = new FunctionPointerConverter(
           resolvedType.substr(0, pos1),
-          resolvedType.substr(pos1 + sm.length(), pos2 - 1));
+          resolvedType.substr(pos1 + sm.length(), pos2 - 1),
+          interop::GetType(resolvedType, /*enable_slow_lookup=*/true));
     }
   }
   const std::string failure_msg("Failed to convert type: " + fullType +
@@ -3866,7 +3904,7 @@ cppjit::cpyrt::CreateConverter(interop::TCppType_t type, cdims_t dims) {
     std::string return_type = resolvedTypeStr.substr(0, pos1);
     result = new FunctionPointerConverter(
         return_type.erase(return_type.find_last_not_of(" ") + 1),
-        resolvedTypeStr.substr(pos2 + 2, pos3 - pos2 - 1));
+        resolvedTypeStr.substr(pos2 + 2, pos3 - pos2 - 1), resolvedType);
   } else if ((realTypeStr != "std::byte") &&
              (klass || (klass = interop::GetFullScope(realTypeStr)))) {
     // std::byte is a special enum class used to access raw memory
