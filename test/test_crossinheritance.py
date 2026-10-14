@@ -1918,3 +1918,94 @@ class TestCROSSINHERITANCE:
         class MyUIntDerivedClass(cppjit.gbl.MyUIntBaseClass):
             def give_unsigned_int(self):
                 return 1
+
+    def test40_override_overloads_split_across_hierarchy(self):
+        """Override pure virtual overloads an intermediate base left out"""
+
+        import cppjit
+
+        cppjit.cppdef("""namespace SplitOverloads {
+        struct Impl {
+          virtual ~Impl() {}
+          virtual int operator()(int*) = 0;
+          virtual int operator()() = 0;
+          virtual int run(int) = 0;
+          virtual int run() const = 0;
+        };
+        struct Standalone : Impl {
+          int operator()(int*) override { return -1; }
+          int run(int) override { return -2; }
+        };
+        int call_ptr(Impl& i) { int x = 5; return i(&x); }
+        int call_void(Impl& i) { return i(); }
+        int run_int(Impl& i) { return i.run(9); }
+        int run_const(const Impl& i) { return i.run(); } }""")
+
+        ns = cppjit.gbl.SplitOverloads
+
+        # the dispatcher used to override only the overloads Standalone itself
+        # declares, so the pure virtual ones inherited from Impl kept it abstract
+        class PyStandalone(ns.Standalone):
+            def __call__(self, *args):
+                return 100 + len(args)
+
+            def run(self, *args):
+                return 200 + len(args)
+
+        obj = PyStandalone()
+        assert ns.call_ptr(obj) == 101
+        assert ns.call_void(obj) == 100
+        assert ns.run_int(obj) == 201
+        assert ns.run_const(obj) == 200
+
+        # overriding only some of the overloads still leaves the class abstract
+        with raises(TypeError, match="abstract"):
+            type("Partial", (ns.Standalone,), {"run": lambda self, *a: 0})()
+
+    def test41_override_same_signature_declared_twice(self):
+        """Override a signature several classes in the hierarchy declare"""
+
+        import cppjit
+
+        cppjit.cppdef("""namespace TwiceDeclared {
+        struct Grand {
+          virtual ~Grand() {}
+          virtual int f(int) { return 7; }
+          virtual int g(int*) = 0;
+          virtual int g() = 0;
+        };
+        // same overloads, with top-level const that is not part of the type
+        struct Parent : Grand {
+          int f(const int) override { return 1; }
+          int g(int* const) override { return 2; }
+        };
+        int call_f(Grand& o) { return o.f(1); }
+        int call_g(Grand& o) { int x = 5; return o.g(&x) + o.g(); }
+
+        struct A { virtual ~A() {} virtual int h() = 0; };
+        struct B { virtual ~B() {} virtual int h() = 0; };
+        int call_a(A& a) { return a.h(); }
+        int call_b(B& b) { return b.h(); } }""")
+
+        ns = cppjit.gbl.TwiceDeclared
+
+        # the overloads in Grand and Parent must each be overridden only once
+        class PyParent(ns.Parent):
+            def f(self, x):
+                return 100
+
+            def g(self, *args):
+                return 200 + len(args)
+
+        obj = PyParent()
+        assert ns.call_f(obj) == 100
+        assert ns.call_g(obj) == 401
+
+        # same for a pure virtual shared by two bases in multiple inheritance
+        class PyAB(cppjit.multi(ns.A, ns.B)):
+            def h(self):
+                return 300
+
+        obj = PyAB()
+        assert ns.call_a(obj) == 300
+        assert ns.call_b(obj) == 300
