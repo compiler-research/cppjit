@@ -154,6 +154,15 @@ acquireOrCreateInterpreter(const InterOpPaths& Paths) {
     args.push_back("-resource-dir");
     args.push_back(resourceDir.c_str());
   }
+#ifdef CPPJIT_CLING_INCLUDE_DIR
+  // Cling reads its module maps from the directory of its own
+  // RuntimeUniverse.h. It derives that directory from argv[0], which is the
+  // host python here, so collectModuleMaps asserts. Cling adds its
+  // CLING_INCLUDE_PATHS default after the module setup runs, so only a -I
+  // argument on the command line reaches that setup. The macro exists for the
+  // cling backend alone.
+  args.push_back("-I" CPPJIT_CLING_INCLUDE_DIR);
+#endif
   return Cpp::CreateInterpreter(args, /*GpuArgs=*/{});
 }
 
@@ -185,7 +194,13 @@ static void configureInterpreter(const InterOpPaths& Paths) {
 }
 
 static bool preloadHeaders() {
-  const char* code = "#include <algorithm>\n"
+  // stdint.h and cstdlib come first on purpose. <iostream> pulls in cling's
+  // libc module, and Dispatch.h below includes both headers textually. One
+  // header from two paths gives a redefinition error for __fsid_t and abs.
+  // The textual copies here win, and the include guards stop the second read.
+  const char* code = "#include <stdint.h>\n"
+                     "#include <cstdlib>\n"
+                     "#include <algorithm>\n"
                      "#include <numeric>\n"
                      "#include <complex>\n"
                      "#include <iostream>\n"
@@ -845,10 +860,11 @@ interop::TCppObject_t interop::Construct(TCppScope_t scope,
   return Cpp::Construct(scope, arena, /*count=*/1);
 }
 
-void interop::Destruct(TCppScope_t scope, TCppObject_t instance) {
+void interop::Destruct(TCppScope_t scope, TCppObject_t instance,
+                       size_t count /*=0*/) {
   std::lock_guard<std::recursive_mutex> Lock(
       InterOpMutex); // TODO: this shouldn't locks the JIT call
-  Cpp::Destruct(instance, scope, true, /*count=*/0);
+  Cpp::Destruct(instance, scope, true, count);
 }
 
 static inline bool copy_args(Parameter* args, size_t nargs, void** vargs) {
@@ -1248,6 +1264,17 @@ std::string interop::GetFullName(TCppScope_t method) {
 interop::TCppType_t interop::GetMethodReturnType(TCppMethod_t method) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
   return Cpp::GetFunctionReturnType(method);
+}
+
+bool interop::IsDeallocator(TCppMethod_t method,
+                            std::vector<DeallocType>& VPP) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::IsDeallocator(method, VPP);
+}
+
+interop::AllocType interop::IsAllocator(TCppMethod_t method) {
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  return Cpp::IsAllocator(method);
 }
 
 std::string interop::GetMethodReturnTypeAsString(TCppMethod_t method) {
