@@ -5,7 +5,7 @@ import sys
 
 import py
 from pytest import mark
-from support import IS_CLING, setup_make
+from support import IS_CLING, IS_LINUX, setup_make
 
 currpath = py.path.local(__file__).dirpath()
 test_dct = str(currpath.join("cpp/memory_analysisDict"))
@@ -19,8 +19,8 @@ def setup_module(mod):
 
 
 @mark.skipif(
-    IN_CHILD or IS_CLING,
-    reason="Cling asserts in collectModuleMaps when built with " + FLAGS,
+    IN_CHILD or (IS_CLING and not IS_LINUX),
+    reason="Cling asserts with MacOS-Windows, when built with " + FLAGS,
 )
 def test00_driver():
     env = os.environ.copy()

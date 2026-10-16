@@ -154,6 +154,15 @@ acquireOrCreateInterpreter(const InterOpPaths& Paths) {
     args.push_back("-resource-dir");
     args.push_back(resourceDir.c_str());
   }
+#ifdef CPPJIT_CLING_INCLUDE_DIR
+  // Cling reads its module maps from the directory of its own
+  // RuntimeUniverse.h. It derives that directory from argv[0], which is the
+  // host python here, so collectModuleMaps asserts. Cling adds its
+  // CLING_INCLUDE_PATHS default after the module setup runs, so only a -I
+  // argument on the command line reaches that setup. The macro exists for the
+  // cling backend alone.
+  args.push_back("-I" CPPJIT_CLING_INCLUDE_DIR);
+#endif
   return Cpp::CreateInterpreter(args, /*GpuArgs=*/{});
 }
 
@@ -185,7 +194,13 @@ static void configureInterpreter(const InterOpPaths& Paths) {
 }
 
 static bool preloadHeaders() {
-  const char* code = "#include <algorithm>\n"
+  // stdint.h and cstdlib come first on purpose. <iostream> pulls in cling's
+  // libc module, and Dispatch.h below includes both headers textually. One
+  // header from two paths gives a redefinition error for __fsid_t and abs.
+  // The textual copies here win, and the include guards stop the second read.
+  const char* code = "#include <stdint.h>\n"
+                     "#include <cstdlib>\n"
+                     "#include <algorithm>\n"
                      "#include <numeric>\n"
                      "#include <complex>\n"
                      "#include <iostream>\n"

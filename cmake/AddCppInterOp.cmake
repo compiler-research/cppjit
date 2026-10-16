@@ -12,6 +12,7 @@
 #   CPPJIT_INTEROP_CLANG_MAJOR        clang major of the interpreter
 #   CPPJIT_INTEROP_CLANG_DIR          resource-dir coordinate; empty = probe
 #   CPPJIT_INTEROP_CLANG_RESOURCE_DIR builtin headers to bundle (install only)
+#   CPPJIT_INTEROP_CLING_INCLUDE_DIR  cling's include dir; empty = repl backend
 include_guard(GLOBAL)
 include(ExternalProject)
 
@@ -43,6 +44,7 @@ function(cppjit_add_cppinterop)
     endif()
 
     set(_clang_resource_dir "")
+    set(_cling_include_dir "")
     if(CppInterOp_FOUND)
         if(CPPINTEROP_SOURCE_DIR)
             message(FATAL_ERROR
@@ -146,6 +148,14 @@ function(cppjit_add_cppinterop)
                 set(_cling_dir "${_prefix}/lib/cmake/cling")
             endif()
             message(STATUS "CppInterOp backend: Cling (found at ${_cling_dir})")
+            # Cling reads its module maps from beside RuntimeUniverse.h, and it
+            # derives that directory from argv[0] -- the host python here. Only
+            # a -I on the interpreter command line reaches setupCxxModules, so
+            # hand the directory to the wrapper.
+            find_package(Cling CONFIG QUIET PATHS "${_cling_dir}" NO_DEFAULT_PATH)
+            if(Cling_FOUND)
+                set(_cling_include_dir "${CLING_INCLUDE_DIRS}")
+            endif()
             list(APPEND _args
                 -DCPPINTEROP_USE_CLING=ON
                 -DCPPINTEROP_USE_REPL=OFF
@@ -249,4 +259,5 @@ function(cppjit_add_cppinterop)
     set(CPPJIT_INTEROP_CLANG_MAJOR "${_clang_major}" PARENT_SCOPE)
     set(CPPJIT_INTEROP_CLANG_DIR "${_clang_dir}" PARENT_SCOPE)
     set(CPPJIT_INTEROP_CLANG_RESOURCE_DIR "${_clang_resource_dir}" PARENT_SCOPE)
+    set(CPPJIT_INTEROP_CLING_INCLUDE_DIR "${_cling_include_dir}" PARENT_SCOPE)
 endfunction()
