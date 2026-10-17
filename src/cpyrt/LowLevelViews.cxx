@@ -11,6 +11,7 @@ using namespace cppjit;
 #include <assert.h>
 #include <limits.h>
 #include <map>
+#include <new>
 #include <string.h>
 
 //= memoryview-like object ===================================================
@@ -66,9 +67,11 @@ static void ll_dealloc(cpyrt::LowLevelView* pyobj) {
   PyMem_Free(pyobj->fBufInfo.strides);
   if ((intptr_t)pyobj->fBufInfo.internal & cpyrt::LowLevelView::kIsOwner) {
     if ((intptr_t)pyobj->fBufInfo.internal & cpyrt::LowLevelView::kIsCppArray)
-      delete[] pyobj->fBuf;
+      ::operator delete[](pyobj->get_buf());
+    else if ((intptr_t)pyobj->fBufInfo.internal & cpyrt::LowLevelView::kIsNew)
+      ::operator delete(pyobj->get_buf());
     else
-      free(pyobj->fBuf);
+      free(pyobj->get_buf());
   }
 
   if (pyobj->fElemCnv != pyobj->fConverter && pyobj->fElemCnv &&
@@ -107,6 +110,7 @@ static void ll_dealloc(cpyrt::LowLevelView* pyobj) {
 // clang-format off
 CPYRT_LL_FLAG_GETSET(ownership, cpyrt::LowLevelView::kIsOwner,    __python_owns__)
 CPYRT_LL_FLAG_GETSET(cpparray,  cpyrt::LowLevelView::kIsCppArray, __cpp_array__)
+CPYRT_LL_FLAG_GETSET(isnew, cpyrt::LowLevelView::kIsNew, __is_new__)
 // clang-format on
 
 //---------------------------------------------------------------------------
@@ -916,6 +920,8 @@ static PyGetSetDef ll_getset[] = {
     {(char*)"format", (getter)ll_typecode, nullptr, nullptr, nullptr},
     {(char*)"typecode", (getter)ll_typecode, nullptr, nullptr, nullptr},
     {(char*)"shape", (getter)ll_shape, (setter)ll_setshape, nullptr, nullptr},
+    {(char*)"__is_new__", (getter)ll_getisnew, (setter)ll_setisnew,
+     (char*)"If true, this buffer is allocated with new", nullptr},
     {(char*)nullptr, nullptr, nullptr, nullptr, nullptr}};
 
 namespace cppjit::cpyrt {
