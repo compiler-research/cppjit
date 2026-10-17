@@ -7,6 +7,7 @@ using namespace cppjit;
 #include "CPPInstance.h"
 #include "CPPOverload.h"
 #include "CallContext.h"
+#include "LowLevelViews.h"
 #include "PyStrings.h"
 #include "Utility.h"
 #include "structmember.h" // from Python
@@ -162,6 +163,10 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
     // if this method creates new objects, always take ownership
     if (allocates || IsCreator(pymeth->fMethodInfo->fFlags)) {
 
+      // Note: for CPPInstance returning functions, if IsCreator(..) returns
+      // true it will be assumed allocation is done with `new`, and for
+      // LowLevelView objects, it will be assumed allocator is `new[]`
+
       // either be a constructor with a fresh object proxy self ...
       if (IsConstructor(pymeth->fMethodInfo->fFlags)) {
         if (im_self)
@@ -187,6 +192,24 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
           cppres->fFlags |= CPPInstance::kIsArrayAlloc;
           cppres->fFlags |= CPPInstance::kIsNoConstruct;
           break;
+        default:
+          break;
+        }
+      } else if (LowLevelView_Check(result)) {
+        LowLevelView* LL = (LowLevelView*)result;
+        auto& flags = (intptr_t&)LL->fBufInfo.internal;
+        flags |= LowLevelView::kIsOwner;
+        switch (AT) {
+        case interop::AllocType::Malloc:
+          flags &= ~LowLevelView::kIsCppArray;
+          break;
+        case interop::AllocType::New:
+        case interop::AllocType::OperatorNew:
+          flags |= LowLevelView::kIsNew;
+          flags &= ~LowLevelView::kIsCppArray;
+          break;
+        // ll_new assumes LL is allocated with newarr default, so no need to
+        // touch
         default:
           break;
         }
@@ -230,9 +253,15 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
 
     // the array holds the positional values first, then the keyword ones
     for (Py_ssize_t i = 0; i < nargs + numKwds; i++) {
+      const bool isOwnedCppIns =
+          CPPInstance_Check(args[i]) &&
+          (((CPPInstance*)args[i])->fFlags & CPPInstance::kIsOwner);
+      const bool isOwnedLL =
+          (LowLevelView_Check(args[i]) &&
+           ((intptr_t)((LowLevelView*)args[i])->fBufInfo.internal &
+            LowLevelView::kIsOwner));
       // only a C++ object can hold memory that the callee releases
-      if (!CPPInstance_Check(args[i]) ||
-          !(((CPPInstance*)args[i])->fFlags & CPPInstance::kIsOwner))
+      if (!(isOwnedCppIns || isOwnedLL))
         continue;
 
       Py_ssize_t slot = -1; // no slot of its own
@@ -258,7 +287,11 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
       if (DT == interop::DeallocType::None ||
           DT == interop::DeallocType::Opaque)
         continue;
-      ((CPPInstance*)args[i])->CppOwns();
+      if (isOwnedCppIns)
+        ((CPPInstance*)args[i])->CppOwns();
+      else
+        (intptr_t&)((LowLevelView*)args[i])->fBufInfo.internal &=
+            ~LowLevelView::kIsOwner;
     }
     Py_XDECREF(argnames);
 

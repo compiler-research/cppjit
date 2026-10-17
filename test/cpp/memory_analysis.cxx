@@ -71,4 +71,26 @@ void memOwner::releaseOverloaded(memOwn* keep, memOwn* obj) { delete obj; }
 
 void releaseFree(memOwner* self, memOwn* obj) { delete obj; }
 
+int* allocIntNewArr(int count) { return new int[count]; }
+
+int* allocIntOperatorNewArr(size_t count) {
+  return (int*)::operator new[](count * sizeof(int));
+}
+
+int* allocIntNew() { return new int; }
+
+int* allocIntOperatorNew() { return (int*)::operator new(sizeof(int)); }
+
+int* allocIntMalloc(size_t count) { return (int*)malloc(count * sizeof(int)); }
+
+int* intNoAttrAlloc() { return new int[5]; }
+
+void releaseBufferArr(int* buf) { delete[] buf; }
+
+void releaseBuffer(int* buf) { delete buf; }
+
+void releaseBufferMalloc(int* buf) { free(buf); }
+
+void keepBuffer(int* buf) { return; }
+
 } // namespace memory
