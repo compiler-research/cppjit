@@ -1196,10 +1196,15 @@ bool interop::GetSmartPtrInfo(TCppScope_t klass, TCppScope_t* raw,
 
 // type offsets --------------------------------------------------------------
 ptrdiff_t interop::GetBaseOffset(TCppScope_t derived, TCppScope_t base,
-                                 TCppObject_t /*address*/, int direction,
+                                 TCppObject_t address, int direction,
                                  bool rerror) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
-  intptr_t offset = Cpp::GetBaseClassOffset(derived, base);
+
+  // Up-casts may start from a subobject whose complete type is unknown. For
+  // down-casts, callers obtain the complete type with GetActualClass, so use
+  // its static layout; address points to the base rather than the derived type.
+  intptr_t offset = Cpp::GetBaseClassOffset(
+      derived, base, direction > 0 ? address.data : nullptr);
 
   if (offset == -1) // Cling error, treat silently
     return rerror ? (ptrdiff_t)offset : 0;
