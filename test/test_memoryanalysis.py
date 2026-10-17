@@ -477,6 +477,156 @@ class TestMEMORYANALYSIS:
         gc.collect()
 
 
+class TestLOWLEVELVIEWMEMORY:
+    def setup_class(cls):
+        cls.test_dct = test_dct
+        import cppjit
+
+        cppjit.add_include_path(str(currpath.join("cpp", "MemoryOwnership")))
+        cppjit.include("../memory_analysis.h")
+        cls.memory_analysis = cppjit.load_library(cls.test_dct + ".so")
+
+    def test01_newarr_attr(self):
+        import cppjit
+        import cppjit.types
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+        assert type(view) == cppjit.types.LowLevelView
+        assert view.__python_owns__
+        assert view.__cpp_array__
+        assert not view.__is_new__
+
+        # the view frees the buffer with ::operator delete[]
+        del view
+        gc.collect()
+
+    def test02_operator_newarr_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntOperatorNewArr(4)
+        assert view.__python_owns__
+        assert view.__cpp_array__
+        assert not view.__is_new__
+
+        del view
+        gc.collect()
+
+    def test03_new_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNew()
+        assert view.__python_owns__
+        assert view.__is_new__
+        assert not view.__cpp_array__
+
+        # the view frees the buffer with ::operator delete
+        del view
+        gc.collect()
+
+    def test04_operator_new_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntOperatorNew()
+        assert view.__python_owns__
+        assert view.__is_new__
+        assert not view.__cpp_array__
+
+        del view
+        gc.collect()
+
+    def test05_malloc_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntMalloc(4)
+        assert view.__python_owns__
+        # malloc has no flag of its own: no allocation flag means free()
+        assert not view.__cpp_array__
+        assert not view.__is_new__
+
+        del view
+        gc.collect()
+
+    def test06_no_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.intNoAttrAlloc()
+        assert not view.__python_owns__
+
+        # function has no attribute, so the flags stay as ll_new wrote them:
+        # the user takes ownership, therefore the default delete[] is called
+        view.__python_owns__ = True
+        assert view.__cpp_array__
+        assert not view.__is_new__
+
+        del view
+        gc.collect()
+
+    def test07_release_newarr_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+        assert view.__python_owns__
+
+        cppjit.gbl.memory.releaseBufferArr(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test08_release_newarr_buffer_keyword(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+
+        cppjit.gbl.memory.releaseBufferArr(buf=view)
+        assert not view.__python_owns__
+
+    def test09_release_new_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNew()
+
+        cppjit.gbl.memory.releaseBuffer(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test10_release_malloc_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntMalloc(4)
+
+        cppjit.gbl.memory.releaseBufferMalloc(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test11_keep_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+
+        # a cppDeallocNone parameter leaves the ownership where it was
+        cppjit.gbl.memory.keepBuffer(view)
+        assert view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test12_release_with_free(self):
+        import cppjit
+
+        view = cppjit.gbl.malloc(16)
+
+        cppjit.gbl.free(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+
 @mark.skipif(not IN_CHILD, reason="needs " + FLAGS)
 class TestMEMORYANALYSIS_APINOTES:
     def setup_class(cls):
