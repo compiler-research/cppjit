@@ -240,6 +240,7 @@ PyObject* gAbrtException = nullptr;
 std::unordered_set<interop::TCppScope_t> gPinnedTypes;
 std::ostringstream gCapturedError;
 std::streambuf* gOldErrorBuffer = nullptr;
+bool gUseMemoryAnalyzer = false;
 
 std::unordered_map<std::string, std::vector<PyObject*>>& pythonizations() {
   static std::unordered_map<std::string, std::vector<PyObject*>> pyzMap;
@@ -915,6 +916,19 @@ static PyObject* EndCaptureStderr(PyObject*, PyObject*) {
 
   return Py_BuildValue("s", capturedError.c_str());
 }
+
+//----------------------------------------------------------------------------
+static PyObject* UseMemoryAnalyzer(PyObject*, PyObject* args) {
+  // off by default, because the analyzer reads function bodies and only
+  // guesses the ownership that an attribute would state
+  int enable = 0;
+  if (!PyArg_ParseTuple(args, const_cast<char*>("p"), &enable))
+    return nullptr;
+
+  gUseMemoryAnalyzer = enable;
+
+  Py_RETURN_NONE;
+}
 } // unnamed namespace
 
 //- data -----------------------------------------------------------------------
@@ -973,6 +987,8 @@ static PyMethodDef gcpyrtMethods[] = {
      METH_NOARGS, (char*)"Begin capturing stderr to a in memory buffer."},
     {(char*)"_end_capture_stderr", (PyCFunction)EndCaptureStderr, METH_NOARGS,
      (char*)"End capturing stderr and returns the captured buffer."},
+    {(char*)"UseMemoryAnalyzer", (PyCFunction)UseMemoryAnalyzer, METH_VARARGS,
+     (char*)"Enable/disable the memory ownership analyzer."},
     {nullptr, nullptr, 0, nullptr}};
 
 struct module_state {

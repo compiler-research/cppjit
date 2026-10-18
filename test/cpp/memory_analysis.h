@@ -121,5 +121,43 @@ void releaseBufferMalloc(int* buf);
 
 [[clang::annotate("cppDeallocNone", 1)]]
 void keepBuffer(int* buf);
+
+// The analyzer reads function bodies, so these must be inline
+inline memOwn* analyzerAllocNew() { return new memOwn; }
+
+inline memOwn* analyzerAllocNewArr() { return new memOwn[5]; }
+
+inline memOwn* analyzerAllocMalloc() { return (memOwn*)malloc(sizeof(memOwn)); }
+
+// A method keeps the first answer it gets, so a test that runs with the
+// analyzer off needs a function that no other test calls.
+inline memOwn* analyzerOffAllocNew() { return new memOwn; }
+
+inline memOwn* analyzerCachedAllocNew() { return new memOwn; }
+
+struct analyzerOwner {
+  void analyzerRelease(memOwn* obj) { delete obj; }
+
+  void analyzerReleaseSecond(memOwn* keep, memOwn* obj) { delete obj; }
+
+  static void analyzerReleaseStatic(memOwn* obj) { delete obj; }
+
+  // the body frees nothing, so the attribute and the analyzer disagree
+  [[clang::annotate("cppDeallocDelete", 2)]]
+  void analyzerAttrWins(memOwn* obj) {}
+
+  // the attribute answers for keep, and only the analyzer answers for obj
+  [[clang::annotate("cppDeallocNone", 2)]]
+  void analyzerMixedSlots(memOwn* keep, memOwn* obj) {
+    delete obj;
+  }
+
+  void analyzerOffRelease(memOwn* obj) { delete obj; }
+};
+
+inline void analyzerReleaseFree(memOwn* obj) { delete obj; }
+
+// Defined in memory_analysis.cxx, so the interpreter sees no body of it
+void analyzerNoBodyRelease(memOwn* obj);
 } // namespace memory
 #endif // MEMORY_ANALYSIS_H

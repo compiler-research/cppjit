@@ -32,6 +32,7 @@ extern PyObject* gBusException;
 extern PyObject* gSegvException;
 extern PyObject* gIllException;
 extern PyObject* gAbrtException;
+extern bool gUseMemoryAnalyzer;
 } // namespace cppjit::cpyrt
 
 //- public helper ------------------------------------------------------------
@@ -719,20 +720,47 @@ interop::AllocType cpyrt::CPPMethod::GetAllocBehaviour() {
     return interop::AllocType::None;
   }
   interop::AllocType attrResult = interop::IsAllocator(method);
+  // an attribute always wins, so ask the analyzer when there is no
+  // relevant attribute
+  if (attrResult == interop::AllocType::Unknown && gUseMemoryAnalyzer)
+    attrResult = interop::GetAllocType(method);
   fAllocType = attrResult;
   return attrResult;
 }
 
 //----------------------------------------------------------------------------
+void cpyrt::CPPMethod::FillDeallocBehaviour() {
+  fDeallocType.emplace();
+  interop::TCppMethod_t method = GetMethod();
+  if (!method)
+    return;
+
+  interop::IsDeallocator(method, *fDeallocType);
+  if (!gUseMemoryAnalyzer)
+    return;
+
+  std::vector<interop::DeallocType> analyzeRes;
+  if (!interop::GetDeallocType(method, analyzeRes))
+    return;
+
+  // IsDeallocator puts the implicit this in slot 0, GetDeallocType does not,
+  // so each analyzer answer moves up by one slot for a method
+  const size_t shift = (size_t)GetDeallocParamShift();
+  assert(analyzeRes.size() + shift == fDeallocType->size() &&
+         "the analyzer answer must line up with the attribute slots");
+  for (size_t i = 0; i < analyzeRes.size(); i++) {
+    // an attribute always wins, so fill only the slots there is no attribute
+    if ((*fDeallocType)[i + shift] == interop::DeallocType::Opaque)
+      (*fDeallocType)[i + shift] = analyzeRes[i];
+  }
+}
+
+//----------------------------------------------------------------------------
 interop::DeallocType cpyrt::CPPMethod::GetDeallocBehaviour(size_t index) {
-  if (!fDeallocType) {
-    fDeallocType.emplace();
-    if (interop::TCppMethod_t method = GetMethod())
-      interop::IsDeallocator(method, *fDeallocType);
-  }
-  if (index < fDeallocType->size()) {
+  if (!fDeallocType)
+    FillDeallocBehaviour();
+  if (index < fDeallocType->size())
     return (*fDeallocType)[index];
-  }
   return interop::DeallocType::Opaque;
 }
 
