@@ -109,6 +109,8 @@ private:
 
   void SetPyError_(PyObject* msg);
 
+  void FillDeallocBehaviour();
+
 private:
   // representation
   interop::TCppMethod_t fMethod;

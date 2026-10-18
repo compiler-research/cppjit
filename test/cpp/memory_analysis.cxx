@@ -93,4 +93,6 @@ void releaseBufferMalloc(int* buf) { free(buf); }
 
 void keepBuffer(int* buf) { return; }
 
+void analyzerNoBodyRelease(memOwn* obj) { delete obj; }
+
 } // namespace memory
