@@ -311,7 +311,11 @@ bool IsConstMethod(TCppMethod_t);
 RPY_EXPORTED
 AllocType IsAllocator(TCppMethod_t);
 RPY_EXPORTED
+AllocType GetAllocType(TCppMethod_t);
+RPY_EXPORTED
 bool IsDeallocator(TCppMethod_t, std::vector<DeallocType>& VPP);
+RPY_EXPORTED
+bool GetDeallocType(TCppMethod_t, std::vector<DeallocType>& VPP);
 // Templated method/function reflection information
 // ------------------------------------
 RPY_EXPORTED
