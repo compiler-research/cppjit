@@ -44,6 +44,8 @@ typedef Cpp::FuncRef TCppMethod_t;
 typedef Cpp::InterpRef TInterp_t;
 typedef size_t TCppIndex_t;
 typedef void* TCppFuncAddr_t;
+typedef Cpp::AllocType AllocType;
+typedef Cpp::DeallocType DeallocType;
 
 // direct interpreter access -------------------------------------------------
 RPY_EXPORTED
@@ -132,7 +134,7 @@ void Deallocate(TCppScope_t scope, TCppObject_t instance);
 RPY_EXPORTED
 TCppObject_t Construct(TCppScope_t scope, void* arena = nullptr);
 RPY_EXPORTED
-void Destruct(TCppScope_t scope, TCppObject_t instance);
+void Destruct(TCppScope_t scope, TCppObject_t instance, size_t count = 0);
 
 // method/function dispatching -----------------------------------------------
 RPY_EXPORTED
@@ -306,6 +308,10 @@ RPY_EXPORTED
 std::string GetDoxygenComment(TCppScope_t scope, bool strip_markers = true);
 RPY_EXPORTED
 bool IsConstMethod(TCppMethod_t);
+RPY_EXPORTED
+AllocType IsAllocator(TCppMethod_t);
+RPY_EXPORTED
+bool IsDeallocator(TCppMethod_t, std::vector<DeallocType>& VPP);
 // Templated method/function reflection information
 // ------------------------------------
 RPY_EXPORTED
