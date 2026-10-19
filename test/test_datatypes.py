@@ -1,3 +1,4 @@
+import subprocess
 import sys
 
 import py
@@ -6,6 +7,20 @@ from support import IS_CLANG_REPL, IS_CPP23, IS_MAC, pylong, pyunicode, setup_ma
 
 currpath = py.path.local(__file__).dirpath()
 test_dct = str(currpath.join("cpp/datatypesDict"))
+
+IS_MACOS_27_PLUS = False
+
+try:
+    vers = (
+        subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-version"])
+        .decode()
+        .strip()
+    )
+    if int(vers.split(".")[0]) >= 27:
+        IS_MACOS_27_PLUS = True
+except FileNotFoundError:
+    # If xcrun is not on the system, we assume it's not macOS 27+
+    pass
 
 
 def setup_module(mod):
@@ -1016,6 +1031,10 @@ class TestDATATYPES:
         assert c.get_pod_ptrref().m_int == 666
         assert c.get_pod_ptrref().m_double == 3.14
 
+    @mark.xfail(
+        condition=IS_MACOS_27_PLUS,
+        reason="Mutating proxy pointee via T** corrupts memory regulator, resulting in crashes on newer macOS",
+    )
     def test16_object_arguments(self):
         """Test setting and returning of a POD through arguments"""
 
