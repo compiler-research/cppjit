@@ -14,6 +14,8 @@ public:
   PyObject* GetTypeName() override;
 
 public:
+  bool ShouldDropSelf(bool isBound, PyObject* const* args, Py_ssize_t nargs);
+
   PyCallable* Clone() override { return new CPPClassMethod(*this); }
   PyObject* Call(CPPInstance*& self, cpyrt_PyArgs_t args, size_t nargsf,
                  PyObject* kwds, CallContext* ctxt = nullptr) override;

@@ -585,14 +585,21 @@ static PyObject* BindObject(PyObject*, PyObject* args, PyObject* kwds) {
     // ownership is taken over as needed, again following the principle of
     // "least surprise" as most likely only the cast object will be retained
     bool owns = arg0_pyobj->fFlags & CPPInstance::kIsOwner;
+    // allocation flags travels with the ownership
+    const unsigned allocFlags =
+        arg0_pyobj->fFlags &
+        (CPPInstance::kIsMalloc | CPPInstance::kIsArrayAlloc |
+         CPPInstance::kIsNoConstruct);
 
     if (!isPython) {
       // ordinary C++ class
       PyObject* pyobj = BindCppObjectNoCast(
           interop::TCppObject_t((void*)((intptr_t)address.data + offset)),
           cast_type, owns ? CPPInstance::kIsOwner : 0);
-      if (owns && pyobj)
+      if (owns && pyobj) {
         arg0_pyobj->CppOwns();
+        ((CPPInstance*)pyobj)->fFlags |= allocFlags;
+      }
       return pyobj;
 
     } else {
@@ -624,6 +631,7 @@ static PyObject* BindObject(PyObject*, PyObject* args, PyObject* kwds) {
       if (pyobj && owns) {
         arg0_pyobj->CppOwns();
         ((CPPInstance*)pyobj)->PythonOwns();
+        ((CPPInstance*)pyobj)->fFlags |= allocFlags;
       }
 
       return pyobj;

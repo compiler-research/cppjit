@@ -32,15 +32,11 @@ PyObject* cpyrt::CPPClassMethod::Call(CPPInstance*& self, cpyrt_PyArgs_t args,
   // first argument matches the enclosing scope of the class method and it isn't
   // needed for the call, then assume that the method was (incorrectly) bound
   // and so drop that instance from args.
-  int nargs = (int)cpyrt_PyArgs_GET_SIZE(args, nargsf);
-  if ((!self || (PyObject*)self == Py_None) && nargs) {
-    PyObject* arg0 = cpyrt_PyArgs_GET_ITEM(args, 0);
-    if (CPPInstance_Check(arg0) && fArgsRequired <= nargs - 1 &&
-        interop::IsSubclass(reinterpret_cast<CPPInstance*>(arg0)->ObjectIsA(),
-                            GetScope())) {
-      args += 1; // drops first argument
-      nargsf -= 1;
-    }
+  Py_ssize_t nargs = cpyrt_PyArgs_GET_SIZE(args, nargsf);
+  const bool isBound = self && (PyObject*)self != Py_None;
+  if (ShouldDropSelf(isBound, args, nargs)) {
+    args += 1; // drops first argument
+    nargsf -= 1;
   }
 
   if (!this->ConvertAndSetArgs(args, nargsf, ctxt))
@@ -48,6 +44,21 @@ PyObject* cpyrt::CPPClassMethod::Call(CPPInstance*& self, cpyrt_PyArgs_t args,
 
   // execute function
   return this->Execute(nullptr, 0, ctxt);
+}
+
+//----------------------------------------------------------------------------
+bool cpyrt::CPPClassMethod::ShouldDropSelf(bool isBound, PyObject* const* args,
+                                           Py_ssize_t nargs) {
+  // A bound call keeps self outside of args
+  // Also if there is no arg in call, there is no self to drop
+  if (isBound || nargs == 0)
+    return false;
+
+  if (CPPInstance_Check(args[0]) && fArgsRequired <= nargs - 1 &&
+      interop::IsSubclass(((CPPInstance*)args[0])->ObjectIsA(), GetScope()))
+    return true;
+
+  return false;
 }
 
 //----------------------------------------------------------------------------

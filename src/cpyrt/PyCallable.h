@@ -37,6 +37,12 @@ public:
   virtual PyObject* GetCoVarNames() = 0;
   virtual PyObject* GetArgDefault(int /* iarg */, bool silent = true) = 0;
   virtual bool IsConst() { return false; }
+  virtual interop::AllocType GetAllocBehaviour() {
+    return interop::AllocType::None;
+  }
+  virtual interop::DeallocType GetDeallocBehaviour(size_t /* index */) {
+    return interop::DeallocType::Opaque;
+  }
 
   virtual PyObject* GetScopeProxy() = 0;
   virtual interop::TCppFuncAddr_t GetFunctionAddress() = 0;

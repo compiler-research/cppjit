@@ -2,6 +2,8 @@
 #include "cpyrt.h"
 
 using namespace cppjit;
+#include "CPPClassMethod.h"
+#include "CPPFunction.h"
 #include "CPPInstance.h"
 #include "CPPOverload.h"
 #include "CallContext.h"
@@ -142,14 +144,23 @@ static inline void ResetCallState(CPPInstance* descr_self,
 
 // helper to factor out return logic of mp_call / mp_vectorcall
 static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
-                                     PyObject* result) {
+                                     PyObject* result, PyCallable* method,
+                                     PyObject* const* args, size_t nargsf,
+                                     PyObject* kwds) {
   // special case for python exceptions, propagated through C++ layer
   if (result) {
     CPPInstance* cppres =
         (CPPInstance*)(CPPInstance_Check(result) ? result : nullptr);
 
+    interop::AllocType AT = method->GetAllocBehaviour();
+    // the overloads of a group share fMethodInfo, so the answer of this one
+    // stays in a local instead of going into the shared flags
+    const bool allocates = AT != interop::AllocType::None &&
+                           AT != interop::AllocType::Null &&
+                           AT != interop::AllocType::Unknown;
+
     // if this method creates new objects, always take ownership
-    if (IsCreator(pymeth->fMethodInfo->fFlags)) {
+    if (allocates || IsCreator(pymeth->fMethodInfo->fFlags)) {
 
       // either be a constructor with a fresh object proxy self ...
       if (IsConstructor(pymeth->fMethodInfo->fFlags)) {
@@ -158,9 +169,98 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
       }
 
       // ... or be a regular method with an object proxy return value
-      else if (cppres)
+      else if (cppres) {
         cppres->PythonOwns();
+        // After giving ownership, set proper flags to indicate allocation
+        // method/func
+        switch (AT) {
+        case interop::AllocType::Malloc:
+          cppres->fFlags |= CPPInstance::kIsMalloc;
+          break;
+        case interop::AllocType::NewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          break;
+        case interop::AllocType::OperatorNew:
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        case interop::AllocType::OperatorNewArr:
+          cppres->fFlags |= CPPInstance::kIsArrayAlloc;
+          cppres->fFlags |= CPPInstance::kIsNoConstruct;
+          break;
+        default:
+          break;
+        }
+      }
     }
+
+    // an argument that the called function releases belongs to C++ from now
+    // on, else Python frees it a second time
+    const Py_ssize_t nargs = cpyrt_PyArgs_GET_SIZE(args, nargsf);
+    const Py_ssize_t numKwds =
+        kwds && PyTuple_CheckExact(kwds) ? PyTuple_GET_SIZE(kwds) : 0;
+    // the keyword values follow the positional ones in call order, so their
+    // names are what tell which parameter each one belongs to
+    PyObject* argnames = numKwds ? method->GetSignatureNames() : nullptr;
+
+    const bool isBound = pymeth->fSelf != nullptr;
+    // Tells if there is an implicit `this`
+    Py_ssize_t paramShift = 0;
+    // Tells if self parameter should be dropped (may be bound function or
+    // static with self in) or added
+    Py_ssize_t argShift = 0;
+    if (dynamic_cast<CPPFunction*>(method)) {
+      // For a plain func, only case there is a self is when it is bound
+      argShift = isBound ? 1 : 0;
+      // There is no implicit `this` in plain functions
+      paramShift = 0;
+    } else if (auto* CPPCM = dynamic_cast<CPPClassMethod*>(method)) {
+      // Check ShouldDropSelf
+      argShift = CPPCM->ShouldDropSelf(isBound, args, nargs) ? -1 : 0;
+      // Static methods do not carry implicit `this`
+      paramShift = 0;
+    }
+    // Only remain possibility is CPPMethod and its other children which acts as
+    // CPPMethod
+    else {
+      // If method is bound, self is carried outside of args
+      argShift = isBound ? 1 : 0;
+      // A non-static method always keeps implicit `this`
+      paramShift = 1;
+    }
+
+    // the array holds the positional values first, then the keyword ones
+    for (Py_ssize_t i = 0; i < nargs + numKwds; i++) {
+      // only a C++ object can hold memory that the callee releases
+      if (!CPPInstance_Check(args[i]) ||
+          !(((CPPInstance*)args[i])->fFlags & CPPInstance::kIsOwner))
+        continue;
+
+      Py_ssize_t slot = -1; // no slot of its own
+      if (i < nargs)
+        slot = i + argShift;
+      else {
+        // The place of a keyword value means nothing, its name picks the
+        // parameter. kwds has the names in the same order, so kwds[i - nargs]
+        // names args[i].
+        for (Py_ssize_t iarg = 0; iarg < PyTuple_GET_SIZE(argnames); iarg++) {
+          if (PyUnicode_Compare(PyTuple_GET_ITEM(argnames, iarg),
+                                PyTuple_GET_ITEM(kwds, i - nargs)) == 0) {
+            slot = iarg + paramShift;
+            break;
+          }
+        }
+      }
+      // the callee drops this argument, or no name of it matches a parameter
+      if (slot < 0)
+        continue;
+
+      const interop::DeallocType DT = method->GetDeallocBehaviour((size_t)slot);
+      if (DT == interop::DeallocType::None ||
+          DT == interop::DeallocType::Opaque)
+        continue;
+      ((CPPInstance*)args[i])->CppOwns();
+    }
+    Py_XDECREF(argnames);
 
     // if this new object falls inside self, make sure its lifetime is proper
     if (!(pymeth->fMethodInfo->fFlags & CallContext::kNeverLifeLine)) {
@@ -576,7 +676,8 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
     if (!NoImplicit(&ctxt))
       ctxt.fFlags |= CallContext::kAllowImplicit; // no two rounds needed
     PyObject* result = methods[0]->Call(im_self, args, nargsf, kwds, &ctxt);
-    return HandleReturn(pymeth, im_self, result);
+    return HandleReturn(pymeth, im_self, result, methods[0], args, nargsf,
+                        kwds);
   }
 
   // otherwise, handle overloading
@@ -599,7 +700,8 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
       ctxt.fFlags |= CallContext::kAllowImplicit;
     PyObject* result = memoized_pc->Call(im_self, args, nargsf, kwds, &ctxt);
     if (result)
-      return HandleReturn(pymeth, im_self, result);
+      return HandleReturn(pymeth, im_self, result, memoized_pc, args, nargsf,
+                          kwds);
 
     // fall through: python is dynamic, and so, the hashing isn't infallible
     ctxt.fFlags &= ~(CallContext::kAllowImplicit | CallContext::kPyException |
@@ -656,7 +758,8 @@ static PyObject* mp_vectorcall(CPPOverload* pymeth, PyObject* const* args,
           }
         }
 
-        return HandleReturn(pymeth, im_self, result);
+        return HandleReturn(pymeth, im_self, result, methods[i], args, nargsf,
+                            kwds);
       }
 
       // else failure ..
