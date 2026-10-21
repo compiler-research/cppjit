@@ -101,6 +101,9 @@ RPY_EXPORTED
 TCppScope_t GetNamed(const std::string& scope_name,
                      TCppScope_t parent_scope = TCppScope_t{});
 RPY_EXPORTED
+bool IsVisibleName(const std::string& name,
+                   TCppScope_t parent_scope = TCppScope_t{});
+RPY_EXPORTED
 TCppScope_t GetParentScope(TCppScope_t scope);
 RPY_EXPORTED
 TCppScope_t GetScopeFromType(TCppType_t type);
