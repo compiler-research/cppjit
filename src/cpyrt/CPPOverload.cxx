@@ -2,6 +2,8 @@
 #include "cpyrt.h"
 
 using namespace cppjit;
+#include "CPPClassMethod.h"
+#include "CPPFunction.h"
 #include "CPPInstance.h"
 #include "CPPOverload.h"
 #include "CallContext.h"
@@ -201,23 +203,45 @@ static inline PyObject* HandleReturn(CPPOverload* pymeth, CPPInstance* im_self,
     PyObject* argnames = numKwds ? method->GetSignatureNames() : nullptr;
 
     const bool isBound = pymeth->fSelf != nullptr;
-    // a place in the array becomes a slot with this shift
-    const Py_ssize_t argShift =
-        method->GetDeallocArgShift(isBound, args, nargs);
-    // a parameter index becomes a slot with this one
-    const Py_ssize_t paramShift = method->GetDeallocParamShift();
+    // Tells if there is an implicit `this`
+    Py_ssize_t paramShift = 0;
+    // Tells if self parameter should be dropped (may be bound function or
+    // static with self in) or added
+    Py_ssize_t argShift = 0;
+    if (dynamic_cast<CPPFunction*>(method)) {
+      // For a plain func, only case there is a self is when it is bound
+      argShift = isBound ? 1 : 0;
+      // There is no implicit `this` in plain functions
+      paramShift = 0;
+    } else if (auto* CPPCM = dynamic_cast<CPPClassMethod*>(method)) {
+      // Check ShouldDropSelf
+      argShift = CPPCM->ShouldDropSelf(isBound, args, nargs) ? -1 : 0;
+      // Static methods do not carry implicit `this`
+      paramShift = 0;
+    }
+    // Only remain possibility is CPPMethod and its other children which acts as
+    // CPPMethod
+    else {
+      // If method is bound, self is carried outside of args
+      argShift = isBound ? 1 : 0;
+      // A non-static method always keeps implicit `this`
+      paramShift = 1;
+    }
+
     // the array holds the positional values first, then the keyword ones
     for (Py_ssize_t i = 0; i < nargs + numKwds; i++) {
       // only a C++ object can hold memory that the callee releases
-      if (!CPPInstance_Check(args[i]))
+      if (!CPPInstance_Check(args[i]) ||
+          !(((CPPInstance*)args[i])->fFlags & CPPInstance::kIsOwner))
         continue;
 
       Py_ssize_t slot = -1; // no slot of its own
       if (i < nargs)
         slot = i + argShift;
       else {
-        // kwds runs parallel to the keyword part of the array
-        // the place of the name in the signature is the parameter index
+        // The place of a keyword value means nothing, its name picks the
+        // parameter. kwds has the names in the same order, so kwds[i - nargs]
+        // names args[i].
         for (Py_ssize_t iarg = 0; iarg < PyTuple_GET_SIZE(argnames); iarg++) {
           if (PyUnicode_Compare(PyTuple_GET_ITEM(argnames, iarg),
                                 PyTuple_GET_ITEM(kwds, i - nargs)) == 0) {

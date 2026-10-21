@@ -14,10 +14,7 @@ public:
   PyObject* GetTypeName() override;
 
 public:
-  Py_ssize_t GetDeallocArgShift(bool isBound, PyObject* const* args,
-                                Py_ssize_t nargs) override;
-  // a static method has no object argument.
-  Py_ssize_t GetDeallocParamShift() override { return 0; }
+  bool ShouldDropSelf(bool isBound, PyObject* const* args, Py_ssize_t nargs);
 
   PyCallable* Clone() override { return new CPPClassMethod(*this); }
   PyObject* Call(CPPInstance*& self, cpyrt_PyArgs_t args, size_t nargsf,

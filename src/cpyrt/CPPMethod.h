@@ -65,15 +65,6 @@ public:
   bool IsConst() override;
   interop::AllocType GetAllocBehaviour() override;
   interop::DeallocType GetDeallocBehaviour(size_t index) override;
-  // A bound call passes self on its own, so args[0] lines up with the second
-  // slot. A direct call goes through the vector call, which skips the
-  // descriptor, and then self sits in args[0] itself.
-  Py_ssize_t GetDeallocArgShift(bool isBound, PyObject* const* /* args */,
-                                Py_ssize_t /* nargs */) override {
-    return isBound ? 1 : 0;
-  }
-  // the first slot belongs to the implicit object argument of the method
-  Py_ssize_t GetDeallocParamShift() override { return 1; }
 
   PyObject* GetScopeProxy() override;
   interop::TCppFuncAddr_t GetFunctionAddress() override;
