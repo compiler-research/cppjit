@@ -1,0 +1,300 @@
+name: Benchmark
+
+# Counts the instructions of calls from Python into C++ (benchmarks/) under
+# callgrind, on Linux x86_64 with a Release build of everything.
+#   - push to main: publishes the counts to gh-pages, as charts and as the
+#     benchmarks/baseline.json that pull requests compare against.
+#   - pull_request: counts the PR (merged into main) and compares it with
+#     main's published counts; fails when a benchmark runs more than THRESHOLD
+#     percent more instructions. Counts depend on the toolchain, so main is
+#     counted again on this runner when its published counts came from another
+#     toolchain (see the fingerprint), or to confirm a regression.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number || github.ref }}
+  # PR-only: let every push to main reach gh-pages, one at a time.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # percent; a benchmark running more instructions than main by more fails
+  THRESHOLD: '5'
+  CPPINTEROP_EXTRA_INTERPRETER_ARGS: '-std=c++20'
+
+jobs:
+  benchmark:
+    name: benchmark/ubuntu-24.04/llvm22/py3.14
+    runs-on: ubuntu-24.04
+    steps:
+      # On a PR this is the merge commit: the PR as it would land on main.
+      - name: Checkout head
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      # valgrind from conda-forge, as in the test suite's valgrind cell; it
+      # needs glibc's debug symbols from libc6-dbg
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ libc6-dbg
+
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-name: valgrind-env
+          create-args: valgrind
+          condarc: |
+            channels:
+              - conda-forge
+
+      - name: Add valgrind to PATH
+        run: |
+          prefix="${MAMBA_ROOT_PREFIX:-$HOME/micromamba}/envs/valgrind-env"
+          echo "${prefix}/bin" >> "${GITHUB_PATH}"
+          # the benchmark library's callgrind markers need its headers
+          echo "CPPFLAGS=-I${prefix}/include" >> "${GITHUB_ENV}"
+
+      - uses: compiler-research/ci-workflows/actions/setup-llvm@main
+        with:
+          version: '22'
+          os: ubuntu-24.04
+
+      # Everything besides the code under test that changes the counts. Counts
+      # are compared only within one fingerprint.
+      - name: Fingerprint the toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/bench"
+          # LLVM_DIR is <prefix>/lib/cmake/llvm
+          llvm_config="${LLVM_DIR}/../../../bin/llvm-config"
+          {
+            echo "${ImageOS}"
+            ldd --version | head -n1
+            g++ --version | head -n1
+            echo "LLVM $("${llvm_config}" --version 2>/dev/null || echo "${LLVM_DIR}")"
+            python -c 'import sys; print("Python", sys.version.split()[0])'
+            valgrind --version
+          } | paste -sd ';' - > "${RUNNER_TEMP}/bench/fingerprint.txt"
+          cat "${RUNNER_TEMP}/bench/fingerprint.txt"
+
+      - name: Build head
+        run: |
+          set -euo pipefail
+          export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+          python -m venv "${RUNNER_TEMP}/venv-head"
+          "${RUNNER_TEMP}/venv-head/bin/pip" install pytest
+          "${RUNNER_TEMP}/venv-head/bin/pip" install . \
+            --config-settings=cmake.define.LLVM_DIR="${LLVM_DIR}"
+
+      - name: Count head
+        env:
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          PYTHON="${RUNNER_TEMP}/venv-head/bin/python" benchmarks/callgrind.sh \
+            "${RUNNER_TEMP}/bench/head.json" --commit "${COMMIT}" \
+            --fingerprint "$(cat "${RUNNER_TEMP}/bench/fingerprint.txt")"
+
+      # main's published counts serve when they share this run's fingerprint
+      # and show no regression; otherwise main is counted here.
+      - name: Fetch main's counts
+        id: stored
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -uo pipefail
+          out="${RUNNER_TEMP}/bench"
+          recount() {
+            echo "recount=true" >> "${GITHUB_OUTPUT}"
+            echo "note=Counted \`main\` on this runner: $1." >> "${GITHUB_OUTPUT}"
+            exit 0
+          }
+          git fetch --depth=1 origin gh-pages \
+            && git show FETCH_HEAD:benchmarks/baseline.json > "${out}/base.json" \
+            || recount "it has no published counts"
+          python - "${out}/base.json" "${out}/head.json" <<'EOF' || recount "its published counts come from another toolchain"
+          import json, sys
+          base, head = (json.load(open(p)) for p in sys.argv[1:])
+          sys.exit(base.get("fingerprint") != head["fingerprint"])
+          EOF
+          python benchmarks/report.py compare --base "${out}/base.json" \
+            --head "${out}/head.json" --threshold "${THRESHOLD}" > /dev/null \
+            || recount "confirming a regression against its published counts"
+          echo "recount=false" >> "${GITHUB_OUTPUT}"
+
+      # head's benchmarks, so that both builds run the same cases
+      - name: Checkout main
+        if: ${{ steps.stored.outputs.recount == 'true' }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+          persist-credentials: false
+
+      - name: Build main
+        if: ${{ steps.stored.outputs.recount == 'true' }}
+        run: |
+          set -euo pipefail
+          export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+          python -m venv "${RUNNER_TEMP}/venv-base"
+          "${RUNNER_TEMP}/venv-base/bin/pip" install pytest
+          "${RUNNER_TEMP}/venv-base/bin/pip" install ./base \
+            --config-settings=cmake.define.LLVM_DIR="${LLVM_DIR}"
+
+      - name: Count main
+        if: ${{ steps.stored.outputs.recount == 'true' }}
+        run: |
+          set -euo pipefail
+          PYTHON="${RUNNER_TEMP}/venv-base/bin/python" benchmarks/callgrind.sh \
+            "${RUNNER_TEMP}/bench/base.json" --commit "$(git -C base rev-parse HEAD)" \
+            --fingerprint "$(cat "${RUNNER_TEMP}/bench/fingerprint.txt")"
+
+      - name: Compare with main
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NOTE: ${{ steps.stored.outputs.note }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          CHARTS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/benchmarks/
+        run: |
+          set -uo pipefail
+          out="${RUNNER_TEMP}/bench"
+          python benchmarks/report.py compare \
+            --base "${out}/base.json" --head "${out}/head.json" \
+            --threshold "${THRESHOLD}" \
+            --base-name "${BASE_REF}" --head-name "#${PR_NUMBER}" \
+            --repo-url "${REPO_URL}" --charts-url "${CHARTS_URL}" \
+            ${NOTE:+--note "${NOTE}"} \
+            --markdown "${out}/comment.md"
+          RETCODE=$?
+          cat "${out}/comment.md" >> "${GITHUB_STEP_SUMMARY}"
+          exit "${RETCODE}"
+
+      - name: Export for the charts
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          out="${RUNNER_TEMP}/bench"
+          python benchmarks/report.py export "${out}/head.json" \
+            --first-call "${out}/first_call.json" \
+            --successive-call "${out}/successive_call.json"
+
+      - name: Upload results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: ${{ runner.temp }}/bench/
+          if-no-files-found: warn
+
+  report:
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: benchmark-results
+        continue-on-error: true
+
+      - uses: actions/github-script@v9
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- cppjit-benchmark -->';
+
+            const body = fs.existsSync('comment.md')
+              ? fs.readFileSync('comment.md', 'utf8')
+              : [marker, '## Benchmark Report',
+                 `:warning: The benchmarks did not run to completion, see the [workflow run](${process.env.RUN_URL}).`].join('\n');
+
+            // PR comment needs pull-requests:write, downgraded to read-only on
+            // fork PRs — don't fail the job when the write errors out.
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                ...context.repo, issue_number: context.issue.number, per_page: 100,
+              });
+              const existing = comments.find(c => c.body.startsWith(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+              }
+            } catch (e) {
+              core.warning(`Could not post PR comment (likely a fork PR with a read-only token): ${e.message}`);
+            }
+
+  # Separate from the job that runs the code, which keeps a read-only token.
+  publish:
+    if: ${{ github.event_name == 'push' }}
+    needs: benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # github-action-benchmark commits to gh-pages from the workspace's clone
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: benchmark-results
+          path: ${{ runner.temp }}/bench
+
+      - name: Publish first-call counts
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        with:
+          name: First call
+          tool: customSmallerIsBetter
+          output-file-path: ${{ runner.temp }}/bench/first_call.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarks
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: false
+
+      - name: Publish successive-call counts
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        with:
+          name: Successive calls
+          tool: customSmallerIsBetter
+          output-file-path: ${{ runner.temp }}/bench/successive_call.json
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarks
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: false
+
+      - name: Publish the counts pull requests compare against
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin gh-pages
+          git switch --force-create gh-pages FETCH_HEAD
+          cp "${RUNNER_TEMP}/bench/head.json" benchmarks/baseline.json
+          git add benchmarks/baseline.json
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "Update the benchmark baseline to ${GITHUB_SHA}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
