@@ -51,6 +51,24 @@ PyObject* cpyrt::CPPClassMethod::Call(CPPInstance*& self, cpyrt_PyArgs_t args,
 }
 
 //----------------------------------------------------------------------------
+Py_ssize_t cpyrt::CPPClassMethod::GetDeallocArgShift(bool isBound,
+                                                     PyObject* const* args,
+                                                     Py_ssize_t nargs) {
+  // a static method takes no object argument, so a bound call drops self
+  if (isBound)
+    return 0;
+
+  // Call function above drops a leading instance that the call does not need,
+  // and then args[0] belongs to no parameter. The check below repeats the one
+  // in Call(), so a change to either one belongs in both.
+  if (nargs > 0 && CPPInstance_Check(args[0]) && fArgsRequired <= nargs - 1 &&
+      interop::IsSubclass(((CPPInstance*)args[0])->ObjectIsA(), GetScope()))
+    return -1;
+
+  return 0;
+}
+
+//----------------------------------------------------------------------------
 PyObject* cpyrt::CPPClassMethod::GetTypeName() {
   PyObject* cppname =
       PyUnicode_FromString((GetReturnTypeName() + " (*)").c_str());
