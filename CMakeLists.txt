@@ -10,8 +10,11 @@ include(GNUInstallDirs)
 # This option won't make a lot of sense since we only ship the shared library in site-packages
 # Perhaps this should permanently be OFF and users can build their own CppInterOp if they want to run the tests?
 option(CPPJIT_ENABLE_CPPINTEROP_TESTS "enable CppInterOp tests" OFF)
-set(CPPINTEROP_GIT_REPOSITORY "https://github.com/compiler-research/CppInterOp.git" CACHE STRING "")
-set(CPPINTEROP_GIT_TAG "f4adaa6b50542dd564089fe584d407bf15351c97" CACHE STRING "")
+# Temporary pin to the overload-resolution development branch so CI builds
+# and tests it (compiler-research/CppInterOp#1147). Returns to a pinned
+# upstream commit once that PR lands.
+set(CPPINTEROP_GIT_REPOSITORY "https://github.com/Vipul-Cariappa/CppInterOp.git" CACHE STRING "")
+set(CPPINTEROP_GIT_TAG "76c198c949d0692590bb0808c8ae10dabaeadf91" CACHE STRING "")
 set(CPPINTEROP_SOURCE_DIR "" CACHE PATH
     "Override default CppInterOp built by ExternalProject_Add, with a path to local CppInterOp source")
 
@@ -29,7 +32,7 @@ endif()
 
 # The LLVM range the pinned CppInterOp supports; update together with the tag.
 set(CPPJIT_LLVM_VERSION_MIN 20)
-set(CPPJIT_LLVM_VERSION_MAX 22)
+set(CPPJIT_LLVM_VERSION_MAX 23)
 
 # Runtime fallback anchor for the dispatch (see cppinterop_paths()): the
 # installed package under scikit-build-core, the build tree otherwise --

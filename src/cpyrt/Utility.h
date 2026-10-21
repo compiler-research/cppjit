@@ -37,10 +37,17 @@ PyCallable* FindBinaryOperator(
 
 // helper for template classes and methods
 enum ArgPreference { kNone, kPointer, kReference, kValue };
+std::string GetPyCallableAnnotation(PyObject* pyobj);
+// smart_as_pointee: spell a smart pointer proxy as (an lvalue of) the object it
+// points to rather than as the smart pointer
+bool AddTypeName(std::string& tmpl_name, PyObject* tn, PyObject* arg,
+                 ArgPreference pref, int* pcnt = nullptr,
+                 bool smart_as_pointee = false);
 std::string ConstructTemplateArgs(PyObject* pyname, PyObject* tpArgs,
                                   PyObject* args = nullptr,
                                   ArgPreference = kNone, int argoff = 0,
-                                  int* pcnt = nullptr);
+                                  int* pcnt = nullptr,
+                                  bool usingThisParameter = false);
 std::vector<Cpp::TemplateArgInfo>
 GetTemplateArgsTypes(PyObject* scope, PyObject* tpArgs,
                      PyObject* args = nullptr, ArgPreference = kNone,
@@ -113,9 +120,6 @@ struct PyOperators {
 // meta information
 std::string ClassName(PyObject* pyobj);
 bool IsSTLIterator(const std::string& classname);
-
-// for threading: save call to PyErr_Occurred()
-PyObject* PyErr_Occurred_WithGIL();
 
 // helpers for collecting/maintaining python exception data
 struct PyError_t {

@@ -140,8 +140,9 @@ CPPJIT_DECLARE_REFCONVERTER(LDouble);
 // first resolution round, delegate storage to the underlying integer converter
 class EnumConverter : public Converter {
 public:
-  EnumConverter(Converter* base, const std::string& enum_name)
-      : fBase(base), fEnumName(enum_name) {}
+  EnumConverter(Converter* base, interop::TCppScope_t enum_scope)
+      : fBase(base), fEnumScope(enum_scope),
+        fEnumName(interop::GetScopedFinalName(enum_scope)) {}
   ~EnumConverter() override;
 
 public:
@@ -153,8 +154,13 @@ public:
   std::string GetFailureMsg() override;
 
 private:
+  PyObject* GetEnumType();
+
+private:
   Converter* fBase;
+  interop::TCppScope_t fEnumScope;
   std::string fEnumName;
+  PyObject* fEnumType = nullptr;
 };
 
 class VoidConverter : public Converter {
@@ -448,8 +454,7 @@ public:
 // function pointers
 class FunctionPointerConverter : public Converter {
 public:
-  FunctionPointerConverter(const std::string& ret, const std::string& sig)
-      : fRetType(ret), fSignature(sig) {}
+  FunctionPointerConverter(interop::TCppType_t FnType) : fFnType(FnType) {}
 
 public:
   bool SetArg(PyObject*, Parameter&, CallContext* = nullptr) override;
@@ -459,17 +464,17 @@ public:
   std::string GetFailureMsg() override { return "[FunctionPointerConverter]"; };
 
 protected:
-  std::string fRetType;
-  std::string fSignature;
+  interop::TCppType_t fFnType;
   bool fAllowCppInstance = false;
 };
 
 // std::function
 class StdFunctionConverter : public FunctionPointerConverter {
 public:
-  StdFunctionConverter(Converter* cnv, const std::string& ret,
-                       const std::string& sig)
-      : FunctionPointerConverter(ret, sig), fConverter(cnv) {
+  StdFunctionConverter(Converter* cnv, interop::TCppType_t fn,
+                       const std::string& ret, const std::string& sig)
+      : FunctionPointerConverter(interop::GetFnTypeFromStdFn(fn)),
+        fRetType(ret), fSignature(sig), fConverter(cnv) {
     fAllowCppInstance = true;
   }
   StdFunctionConverter(const StdFunctionConverter&) = delete;
@@ -483,6 +488,8 @@ public:
   std::string GetFailureMsg() override { return "[StdFunctionConverter]"; };
 
 protected:
+  std::string fRetType;
+  std::string fSignature;
   Converter* fConverter;
 };
 
@@ -502,8 +509,6 @@ public:
   std::string GetFailureMsg() override { return "[SmartPtrConverter]"; };
 
 protected:
-  virtual bool GetAddressSpecialCase(PyObject*, void*&) { return false; }
-
   interop::TCppScope_t fSmartPtrType;
   interop::TCppScope_t fUnderlyingType;
   bool fKeepControl;
