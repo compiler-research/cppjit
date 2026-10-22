@@ -11,14 +11,17 @@ using namespace cppjit;
 #include "cppjit_interop.h"
 
 // Standard
+#include <map>
 #include <set>
 #include <sstream>
 
 //----------------------------------------------------------------------------
 static inline void InjectMethod(interop::TCppMethod_t method,
                                 const std::string& mtCppName,
+                                const std::string& mtPyName,
                                 std::ostringstream& code) {
-  // inject implementation for an overridden method
+  // inject implementation for an overridden method, forwarding to the Python
+  // method of the given name (the C++ name, or its mapping for operators)
   using namespace cppjit::cpyrt;
 
   // method declaration
@@ -65,7 +68,7 @@ static inline void InjectMethod(interop::TCppMethod_t method,
   Utility::ConstructCallbackPreamble(retType, argtypes, code);
 
   // perform actual method call
-  code << "    PyObject* mtPyName = PyUnicode_FromString(\"" << mtCppName
+  code << "    PyObject* mtPyName = PyUnicode_FromString(\"" << mtPyName
        << "\");\n"
           "    PyObject* pyresult = PyObject_CallMethodObjArgs(iself, mtPyName";
   for (interop::TCppIndex_t i = 0; i < nArgs; ++i)
@@ -163,21 +166,61 @@ namespace {
 
 using namespace cppjit::interop;
 
-static inline std::vector<TCppMethod_t>
-FindBaseMethod(TCppScope_t tbase, const std::string mtCppName) {
-  // Recursively walk the inheritance tree to find the overloads of the named
-  // method
-  std::vector<TCppMethod_t> result;
-  result = GetMethodsFromName(tbase, mtCppName);
-  if (result.empty()) {
-    for (TCppIndex_t ibase = 0; ibase < GetNumBases(tbase); ++ibase) {
-      TCppScope_t b = interop::GetBaseScope(tbase, ibase);
-      result = FindBaseMethod(b, mtCppName);
-      if (!result.empty())
-        break;
-    }
+// signatures of the methods already overridden, per C++ method name
+typedef std::map<std::string, std::set<std::string>> Overridden_t;
+
+static inline std::string GetOverrideSignature(TCppMethod_t method) {
+  // What an override has to match: the canonical argument types (ignoring
+  // top-level cv-qualifiers, which are not part of the function type) and
+  // constness; unlike interop::GetMethodSignature, which spells the argument
+  // types as written, this is the same string for all declarations of one
+  // signature, so it can be used to tell overloads apart
+  std::string sig = "(";
+  TCppIndex_t nArgs = GetMethodNumArgs(method);
+  for (TCppIndex_t i = 0; i < nArgs; ++i) {
+    if (i != 0)
+      sig += ", ";
+    sig += GetMethodArgCanonUnqualTypeAsString(method, i);
   }
-  return result;
+  sig += IsConstMethod(method) ? ") const" : ")";
+  return sig;
+}
+
+static inline std::string GetPyMethodName(TCppMethod_t method,
+                                          const std::string& mtCppName) {
+  // The name under which the Python class overrides the method: operators map
+  // onto their Python special methods (e.g. operator() onto __call__); the
+  // result is empty for operators that have no Python side (e.g. operator new)
+  return cpyrt::Utility::MapOperatorName(mtCppName,
+                                         GetMethodNumArgs(method) != 0);
+}
+
+static void InjectInheritedOverloads(TCppScope_t tbase,
+                                     const std::set<std::string>& names,
+                                     Overridden_t& overridden,
+                                     std::ostringstream& code) {
+  // Walk the inheritance tree for virtual overloads of the named methods that
+  // no more derived class declares: a base may implement only some overloads
+  // of a method the Python class overrides, leaving the others (e.g. pure
+  // virtual ones) to be overridden here, or the dispatcher class remains
+  // abstract. Non-virtual methods are not dispatched to Python either way, so
+  // only the signatures of the virtual ones are recorded.
+  std::vector<TCppMethod_t> methods;
+  GetClassMethods(tbase, methods);
+  for (const auto& method : methods) {
+    if (!IsVirtualMethod(method))
+      continue;
+    const std::string& mtCppName = GetName(TCppScope_t(method.data));
+    std::string mtPyName = GetPyMethodName(method, mtCppName);
+    if (mtPyName.empty() || names.find(mtPyName) == names.end())
+      continue;
+    if (overridden[mtCppName].insert(GetOverrideSignature(method)).second)
+      InjectMethod(method, mtCppName, mtPyName, code);
+  }
+
+  for (TCppIndex_t ibase = 0; ibase < GetNumBases(tbase); ++ibase)
+    InjectInheritedOverloads(GetBaseScope(tbase, ibase), names, overridden,
+                             code);
 }
 
 } // unnamed namespace
@@ -289,18 +332,22 @@ bool cpyrt::InsertDispatcher(CPPScope* klass, PyObject* bases, PyObject* dct,
     code << "  virtual ~" << derivedName << "() {}\n";
 
   // methods: first collect all callables, then get overrides from base classes,
-  // for those that are still missing, search the hierarchy
-  PyObject* clbs = PyDict_New();
+  // then search the rest of the hierarchy for overloads these do not cover
+  std::set<std::string> clbs;
   PyObject* items = PyDict_Items(dct);
   for (Py_ssize_t i = 0; i < PyList_GET_SIZE(items); ++i) {
+    PyObject* key = PyTuple_GET_ITEM(PyList_GET_ITEM(items, i), 0);
     PyObject* value = PyTuple_GET_ITEM(PyList_GET_ITEM(items, i), 1);
-    if (PyCallable_Check(value))
-      PyDict_SetItem(clbs, PyTuple_GET_ITEM(PyList_GET_ITEM(items, i), 0),
-                     value);
+    if (PyUnicode_Check(key) && PyCallable_Check(value)) {
+      if (const char* name = PyUnicode_AsUTF8(key))
+        clbs.insert(name);
+      else
+        PyErr_Clear();
+    }
   }
   Py_DECREF(items);
-  if (PyDict_DelItem(clbs, PyStrings::gInit) != 0)
-    PyErr_Clear();
+  clbs.erase("__init__");
+  Overridden_t overridden;
 
   // protected methods and data need their access changed in the C++ trampoline
   // and then exposed on the Python side; so, collect their names as we go along
@@ -339,13 +386,8 @@ bool cpyrt::InsertDispatcher(CPPScope* klass, PyObject* bases, PyObject* dct,
 
       std::string mtCppName =
           interop::GetName(interop::TCppScope_t(method.data));
-      PyObject* key = PyUnicode_FromString(mtCppName.c_str());
-      int contains = PyDict_Contains(dct, key);
-      if (contains == -1)
-        PyErr_Clear();
-      if (contains != 1) {
-        Py_DECREF(key);
-
+      std::string mtPyName = GetPyMethodName(method, mtCppName);
+      if (mtPyName.empty() || clbs.find(mtPyName) == clbs.end()) {
         // if the method is protected, we expose it through re-declaration and
         // forwarding (using does not work here b/c there may be private
         // overloads)
@@ -380,11 +422,8 @@ bool cpyrt::InsertDispatcher(CPPScope* klass, PyObject* bases, PyObject* dct,
         continue;
       }
 
-      InjectMethod(method, mtCppName, code);
-
-      if (PyDict_DelItem(clbs, key) != 0)
-        PyErr_Clear(); // happens for overloads
-      Py_DECREF(key);
+      if (overridden[mtCppName].insert(GetOverrideSignature(method)).second)
+        InjectMethod(method, mtCppName, mtPyName, code);
     }
 
     // support for templated ctors in single inheritance (TODO: also multi
@@ -410,33 +449,16 @@ bool cpyrt::InsertDispatcher(CPPScope* klass, PyObject* bases, PyObject* dct,
       has_ctors += 1;
   }
 
-  // try to locate left-overs in base classes
-  for (const auto& binfo : base_infos) {
-    if (PyDict_Size(clbs)) {
+  // overloads further up the hierarchy, whether of a method the direct bases
+  // do not declare at all or of one they implement only in part
+  if (!clbs.empty()) {
+    for (const auto& binfo : base_infos) {
       size_t nbases = interop::GetNumBases(binfo.btype);
-      for (size_t ibase = 0; ibase < nbases; ++ibase) {
-        interop::TCppScope_t tbase =
-            (interop::TCppScope_t)interop::GetBaseScope(binfo.btype, ibase);
-
-        PyObject* keys = PyDict_Keys(clbs);
-        for (Py_ssize_t i = 0; i < PyList_GET_SIZE(keys); ++i) {
-          // TODO: should probably invert this looping; but that makes handling
-          // overloads clunky
-          PyObject* key = PyList_GET_ITEM(keys, i);
-          std::string mtCppName = PyUnicode_AsUTF8(key);
-          const auto& methods = FindBaseMethod(tbase, mtCppName);
-          for (auto method : methods)
-            InjectMethod(method, mtCppName, code);
-          if (!methods.empty()) {
-            if (PyDict_DelItem(clbs, key) != 0)
-              PyErr_Clear();
-          }
-        }
-        Py_DECREF(keys);
-      }
+      for (size_t ibase = 0; ibase < nbases; ++ibase)
+        InjectInheritedOverloads(interop::GetBaseScope(binfo.btype, ibase),
+                                 clbs, overridden, code);
     }
   }
-  Py_DECREF(clbs);
 
   // constructors: build up from the argument types of the base class, for use
   // by the Python derived class (inheriting with/ "using" does not work b/c
