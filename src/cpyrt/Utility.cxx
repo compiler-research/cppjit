@@ -1703,7 +1703,10 @@ bool cpyrt::Utility::IncludePython() {
 
         // utilities from the cpyrt public API
         "#include \"cpyrt/DispatchPtr.h\"\n"
-        "#include \"cpyrt/PyException.h\"\n");
+        "#include \"cpyrt/PyException.h\"\n"
+
+        // used by the generated callback code
+        "#include <vector>\n");
     includesDone = okay;
   }
 
