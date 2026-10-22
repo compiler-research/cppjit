@@ -525,7 +525,29 @@ int cpyrt::CPPMethod::GetPriority() {
 
       // prefer more derived classes
       const std::string& clean_name = TypeManip::clean_type(aname, false);
-      interop::TCppScope_t scope = interop::GetScope(clean_name);
+      interop::TCppScope_t scope;
+      if (clean_name.find('<') != std::string::npos &&
+          clean_name.find("initializer_list") != std::string::npos) {
+        // GetScope() deliberately resolves std::initializer_list<T> as
+        // std::vector<T>, which the ranking relies on; but resolving the
+        // spelling declares a new trampoline on every call. Take the element
+        // type from the argument class and instantiate std::vector<T> from
+        // it directly. Names where the list is not the argument class itself
+        // (e.g. std::vector<std::initializer_list<int>>) still go through
+        // GetScope().
+        interop::TCppScope_t list =
+            interop::GetScopeFromType(interop::GetUnderlyingType(
+                interop::GetMethodArgType(fMethod, iarg)));
+        std::vector<Cpp::TemplateArgInfo> args;
+        if (list && interop::GetName(list) == "initializer_list")
+          interop::GetClassTemplateInstantiationArgs(list, args);
+        scope = args.size() == 1
+                    ? interop::InstantiateTemplate(
+                          interop::GetNamed("vector", interop::GetNamed("std")),
+                          args.data(), args.size())
+                    : interop::GetScope(clean_name);
+      } else
+        scope = interop::GetScope(clean_name);
       if (scope)
         priority += static_cast<int>(interop::GetNumBasesLongestBranch(scope));
 
