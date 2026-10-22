@@ -1826,3 +1826,23 @@ class TestREGRESSION:
         for i in range(20):
             assert ns.first((i, 2)) == i
         assert n_ctor_overloads() == n
+
+    def test60_repeated_template_scope_lookup(self):
+        """Binding to a templated class by name does not grow the memory"""
+
+        from pytest import importorskip
+
+        psutil = importorskip("psutil")
+
+        import cppjit
+
+        v = cppjit.gbl.std.vector[int]()
+        addr = cppjit.addressof(v)
+        process = psutil.Process()
+        cppjit.bind_object(addr, "std::vector<int>")
+        before = process.memory_info().rss
+        for _ in range(2000):
+            assert type(cppjit.bind_object(addr, "std::vector<int>")) is type(v)
+        # resolving the name used to declare code in the interpreter on every
+        # call, growing the memory by several kB each time
+        assert process.memory_info().rss - before < 4 * 1024 * 1024
