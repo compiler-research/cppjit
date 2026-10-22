@@ -666,6 +666,16 @@ interop::TCppScope_t interop::GetUnderlyingScope(TCppScope_t scope) {
 interop::TCppScope_t interop::GetScope(const std::string& name,
                                        TCppScope_t parent_scope) {
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  // Resolving a templated name below declares a new variable in the
+  // interpreter (see AppendTypesSlow), so remember the result to not declare
+  // one, and grow the memory, on every lookup of the same name.
+  static std::map<std::pair<void*, std::string>, TCppScope_t> template_scopes;
+  const bool is_template = name.find('<') != std::string::npos;
+  const auto key = std::make_pair(parent_scope.data, name);
+  if (is_template)
+    if (auto it = template_scopes.find(key); it != template_scopes.end())
+      return it->second;
+
   if (interop::TCppScope_t scope = Cpp::GetScope(name, parent_scope))
     return scope;
   if (!parent_scope || parent_scope == Cpp::GetGlobalScope())
@@ -673,7 +683,7 @@ interop::TCppScope_t interop::GetScope(const std::string& name,
       return scope;
 
   // FIXME: avoid string parsing here
-  if (name.find('<') != std::string::npos) {
+  if (is_template) {
     // Templated type; may need instantiation. Resolve the whole type
     // expression (e.g. "std::array<float, 3>") and read back its scope.
     // Splitting off the argument list and resolving it directly cannot
@@ -696,8 +706,10 @@ interop::TCppScope_t interop::GetScope(const std::string& name,
       // it, so the specialization may still be declared-but-undefined.
       // Force its definition: callers expect a complete scope, e.g. to
       // walk its base classes.
-      if (scope)
+      if (scope) {
         Cpp::IsComplete(scope);
+        template_scopes[key] = scope;
+      }
       return scope;
     }
   }
