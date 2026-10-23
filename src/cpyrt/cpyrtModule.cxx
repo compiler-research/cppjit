@@ -1093,6 +1093,17 @@ extern "C" PyObject* PyInit_libcppjit() {
   // create the memory regulator
   static MemoryRegulator s_memory_regulator;
 
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+  // Experimental debugger support: cppjit.debugger prepares a debug session
+  // if CPPJIT_DEBUGGER_SUPPORT is set. A failure must not fail the import.
+  if (PyObject* debugger = PyImport_ImportModule("cppjit.debugger")) {
+    Py_XDECREF(PyObject_CallMethod(debugger, "_configure", nullptr));
+    Py_DECREF(debugger);
+  }
+  if (PyErr_Occurred())
+    PyErr_Print();
+#endif
+
   Py_INCREF(gThisModule);
   return gThisModule;
 }

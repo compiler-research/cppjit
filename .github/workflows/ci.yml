@@ -91,6 +91,57 @@ jobs:
           cmake -S . -B build-external -DLLVM_DIR="$LLVM_DIR" -DCppInterOp_DIR="$RUNNER_TEMP/cppinterop-build/lib/cmake/CppInterOp"
           cmake -S . -B build-external -DLLVM_DIR="$LLVM_DIR" -DCppInterOp_DIR="$RUNNER_TEMP/cppinterop-build/lib/cmake/CppInterOp"
 
+  # The experimental debugger support is off in the other cells, which skip the
+  # gdb tests of test_debugging.py.
+  debugger:
+    name: debugger/ubuntu-24.04/llvm22/py3.14
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ git libedit-dev
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      # The DAP tests need gdb 16; Ubuntu 24.04 has gdb 15.
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-name: gdb-env
+          create-args: gdb=16.3
+          condarc: |
+            channels:
+              - conda-forge
+      - name: Add gdb to PATH
+        run: |
+          # Only gdb: the environment's python must not shadow setup-python's.
+          mkdir -p "$RUNNER_TEMP/gdb-bin"
+          ln -s "${MAMBA_ROOT_PREFIX:-$HOME/micromamba}/envs/gdb-env/bin/gdb" "$RUNNER_TEMP/gdb-bin/gdb"
+          echo "$RUNNER_TEMP/gdb-bin" >> "$GITHUB_PATH"
+      - uses: compiler-research/ci-workflows/actions/setup-llvm@main
+        with:
+          version: '22'
+          os: ubuntu-24.04
+      - name: Build and install CppJIT with the debugger support
+        run: |
+          CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" python -m pip install . -v \
+            --config-settings=cmake.define.LLVM_DIR="$LLVM_DIR" \
+            --config-settings=cmake.define.CPPJIT_ENABLE_DEBUGGER_SUPPORT=ON \
+            --config-settings=install.strip=false
+      - name: Run the debugging tests
+        working-directory: test
+        env:
+          CPPINTEROP_EXTRA_INTERPRETER_ARGS: -std=c++20
+        run: |
+          set -o pipefail
+          gdb --version | head -1
+          python -m pytest -ra --tb=short -p no:cacheprovider test_debugging.py | tee "$RUNNER_TEMP/debugging.log"
+          # A skip here means gdb or ptrace is not usable, so the cell tests nothing.
+          ! grep -q "^SKIPPED" "$RUNNER_TEMP/debugging.log"
+
   report:
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: build-test

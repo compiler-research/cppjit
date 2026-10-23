@@ -16,7 +16,13 @@ This release supports Python 3.12-3.14 and LLVM 21-22.
 
 ## New features
 
-- ...
+- Experimental debugger support, in builds with
+  `-DCPPJIT_ENABLE_DEBUGGER_SUPPORT=ON` only. `CPPJIT_DEBUGGER_SUPPORT=1`
+  starts a debug session: the JIT compiles with `-g -O0`, and the C++
+  inputs go to files that gdb can show. A gdb extension
+  (`cppjit/debugger/gdb`) shows mixed Python and C++ backtraces with the
+  variables of both. `examples/vscode-gdb` adds Python breakpoints and
+  steps between Python and C++ in VS Code, through gdb's DAP server.
 
 ## Deprecated features
 

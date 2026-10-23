@@ -121,6 +121,29 @@ reflection and JIT compilation API for cppjit.
 - Domain-specific languages: user-defined "pythonizations" adapt the
   bindings into Pythonic libraries.
 
+### Debugging JIT-compiled C++ (experimental)
+
+Build cppjit with `-DCPPJIT_ENABLE_DEBUGGER_SUPPORT=ON` to debug the
+JIT-compiled C++ at the source level with gdb, also from Python. The
+default build does not have this support. In a build with it, set
+`CPPJIT_DEBUGGER_SUPPORT=1` before `import cppjit`. cppjit then compiles
+with `-g -O0` and writes each C++ input to a file in
+`$TMPDIR/cppjit-debug-<uid>` (`CPPINTEROP_JIT_SOURCE_DIR` selects another
+directory), so that gdb shows the source and binds `file:line`
+breakpoints.
+
+The gdb extension in `cppjit/debugger/gdb` puts the Python frames between
+the C++ frames in backtraces, with their variables (CPython 3.13 or
+later), and adds the `cppjit` commands, such as `cppjit py-bt`:
+
+```bash
+CPPJIT_DEBUGGER_SUPPORT=1 gdb -iex "source $(python -c 'import cppjit.debugger as d; print(d.gdb_script())')" \
+    -ex 'break -qualified my_function' -ex run --args python my_script.py
+```
+
+For VS Code, with Python breakpoints and steps between Python and C++,
+see [examples/vscode-gdb](examples/vscode-gdb/README.md).
+
 ### Requirements
 
 A package manager installation of cppjit (such as pip) requires
