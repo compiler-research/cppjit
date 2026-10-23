@@ -14,6 +14,7 @@ using namespace cppjit;
 #include "cppjit_interop.h"
 
 #include "cpyrt/DispatchPtr.h"
+#include "cpyrt/PyException.h"
 
 // Standard
 #include <algorithm>
@@ -213,8 +214,9 @@ void cpyrt::CPPInstance::SetDispatchPtr(void* ptr) {
 }
 
 //----------------------------------------------------------------------------
-void cpyrt::op_dealloc_nofree(CPPInstance* pyobj) {
+bool cpyrt::op_dealloc_nofree(CPPInstance* pyobj) {
   // Destroy the held C++ object, if owned; does not deallocate the proxy.
+  // Returns false with a Python error set if the destructor throws.
 
   interop::TCppScope_t klass = pyobj->ObjectIsA(false /* check_smart */);
   void*& cppobj = pyobj->GetObjectRaw();
@@ -223,18 +225,36 @@ void cpyrt::op_dealloc_nofree(CPPInstance* pyobj) {
     MemoryRegulator::UnregisterPyObject(pyobj,
                                         (PyObject*)Py_TYPE((PyObject*)pyobj));
 
+  bool ok = true;
   if (cppobj && (pyobj->fFlags & CPPInstance::kIsOwner)) {
-    if (pyobj->fFlags & CPPInstance::kIsValue) {
-      interop::CallDestructor(klass, cppobj);
-      interop::Deallocate(klass, cppobj);
-    } else
-      interop::Destruct(klass, cppobj);
+    try {
+      if (pyobj->fFlags & CPPInstance::kIsValue) {
+        // [expr.delete]: the storage is freed even if the destructor throws
+        try {
+          interop::CallDestructor(klass, cppobj);
+        } catch (...) {
+          interop::Deallocate(klass, cppobj);
+          throw;
+        }
+        interop::Deallocate(klass, cppobj);
+      } else
+        interop::Destruct(klass, cppobj);
+    } catch (PyException&) {
+      ok = false; // error already set
+    } catch (std::exception& e) {
+      SetPyErrFromCppException(e);
+      ok = false;
+    } catch (...) {
+      PyErr_SetString(PyExc_Exception, "unhandled, unknown C++ exception");
+      ok = false;
+    }
   }
   cppobj = nullptr;
 
   if (pyobj->IsExtended())
     delete (ExtendedData*)pyobj->fObject;
   pyobj->fFlags = CPPInstance::kNoWrapConv;
+  return ok;
 }
 
 namespace cppjit::cpyrt {
@@ -276,7 +296,8 @@ static PyObject* op_destruct(CPPInstance* self) {
   // garbage collector (like in PyPy), to allow the user control over when
   // the C++ destructor is called. This method requires that the C++ object
   // is owned (no-op otherwise).
-  op_dealloc_nofree(self);
+  if (!op_dealloc_nofree(self))
+    return nullptr;
   Py_RETURN_NONE;
 }
 
@@ -454,7 +475,12 @@ static CPPInstance* op_new(PyTypeObject* subtype, PyObject*, PyObject*) {
 static void op_dealloc(CPPInstance* pyobj) {
   // Remove (Python-side) memory held by the object proxy.
   PyObject_GC_UnTrack((PyObject*)pyobj);
-  op_dealloc_nofree(pyobj);
+  // dealloc cannot raise, so report the way CPython reports __del__ errors
+  PyObject *pytype, *pyvalue, *pytrace;
+  PyErr_Fetch(&pytype, &pyvalue, &pytrace);
+  if (!op_dealloc_nofree(pyobj))
+    PyErr_WriteUnraisable((PyObject*)Py_TYPE(pyobj));
+  PyErr_Restore(pytype, pyvalue, pytrace);
   PyObject_GC_Del((PyObject*)pyobj);
 }
 
