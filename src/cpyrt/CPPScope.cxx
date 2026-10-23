@@ -505,18 +505,27 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
       }
     }
 
-    // try all outstanding using namespaces in turn to find the attribute (will
-    // cache locally later; TODO: doing so may cause pathological cases)
-    for (auto pyref : *klass->fImp.fUsing) {
-      PyObject* pyuscope = cpyrt_GetWeakRef(pyref);
-      if (pyuscope) {
-        attr = PyObject_GetAttr(pyuscope, pyname);
-        if (!attr)
-          PyErr_Clear();
-        Py_DECREF(pyuscope);
+    // Search each namespace at most once per lookup ([namespace.qual]/3), so
+    // that using-directive cycles terminate.
+    thread_local std::set<std::pair<PyObject*, std::string>> searched;
+    thread_local int depth = 0;
+    if (searched.emplace(pyclass, name).second) {
+      ++depth;
+      // try all outstanding using namespaces in turn to find the attribute
+      // (will cache locally later; TODO: doing so may cause pathological cases)
+      for (auto pyref : *klass->fImp.fUsing) {
+        PyObject* pyuscope = cpyrt_GetWeakRef(pyref);
+        if (pyuscope) {
+          attr = PyObject_GetAttr(pyuscope, pyname);
+          if (!attr)
+            PyErr_Clear();
+          Py_DECREF(pyuscope);
+        }
+        if (attr)
+          break;
       }
-      if (attr)
-        break;
+      if (--depth == 0)
+        searched.clear();
     }
   }
 

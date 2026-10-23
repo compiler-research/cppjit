@@ -1098,3 +1098,23 @@ class TestADVANCEDCPP:
         assert isinstance(obj3, ns.Visible3)
         assert obj3.value == 23
         assert obj3.z == 7
+
+    def test32_using_directive_cycle(self):
+        """Lookup through cyclic using directives searches each namespace once"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace udir_cycle_a {}
+        namespace udir_cycle_p { using namespace udir_cycle_a; int x = 1; }
+        namespace udir_cycle_a { using namespace udir_cycle_p; int y = 2; }""")
+
+        a = cppjit.gbl.udir_cycle_a
+        p = cppjit.gbl.udir_cycle_p
+        assert a.x == 1
+        assert p.y == 2
+
+        with raises(AttributeError):
+            a.nothere
+        with raises(AttributeError):
+            p.nothere
