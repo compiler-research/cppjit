@@ -1483,9 +1483,29 @@ bool interop::IsTemplatedMethod(TCppMethod_t method) {
   return Cpp::IsTemplatedFunction(method);
 }
 
+static void ResolveMethodsFromName(
+    interop::TCppScope_t scope, const std::string& name, std::string& pureName,
+    std::string& explicitParams,
+    std::vector<interop::TCppMethod_t>& unresolved_candidate_methods) {
+  if ((name.find("operator<") != 0) && (name.find('<') != std::string::npos)) {
+    pureName = name.substr(0, name.find('<'));
+    size_t start = name.find('<');
+    size_t end = name.rfind('>');
+    explicitParams = name.substr(start + 1, end - start - 1);
+  } else {
+    pureName = name;
+  }
+
+  std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
+  Cpp::GetClassTemplatedMethods(pureName, scope, unresolved_candidate_methods);
+}
+
 bool interop::IsStaticTemplate(TCppScope_t scope, const std::string& name) {
   std::vector<TCppMethod_t> candidate_methods;
-  Cpp::GetClassTemplatedMethods(name, scope, candidate_methods);
+  std::string pureName;
+  std::string explicit_params;
+  ResolveMethodsFromName(scope, name, pureName, explicit_params,
+                         candidate_methods);
   bool is_static = true;
   for (auto i : candidate_methods) {
     if (!Cpp::IsStaticMethod(i)) {
@@ -1501,20 +1521,11 @@ interop::TCppMethod_t interop::GetMethodTemplate(TCppScope_t scope,
                                                  const std::string& proto) {
   std::string pureName;
   std::string explicit_params;
-
-  if ((name.find("operator<") != 0) && (name.find('<') != std::string::npos)) {
-    pureName = name.substr(0, name.find('<'));
-    size_t start = name.find('<');
-    size_t end = name.rfind('>');
-    explicit_params = name.substr(start + 1, end - start - 1);
-  } else {
-    pureName = name;
-  }
+  std::vector<interop::TCppMethod_t> unresolved_candidate_methods;
+  ResolveMethodsFromName(scope, name, pureName, explicit_params,
+                         unresolved_candidate_methods);
 
   std::lock_guard<std::recursive_mutex> Lock(InterOpMutex);
-
-  std::vector<interop::TCppMethod_t> unresolved_candidate_methods;
-  Cpp::GetClassTemplatedMethods(pureName, scope, unresolved_candidate_methods);
   if (unresolved_candidate_methods.empty() && name.find("operator") == 0) {
     // try operators
     interop::GetClassOperators(scope, pureName, unresolved_candidate_methods);
@@ -1526,8 +1537,10 @@ interop::TCppMethod_t interop::GetMethodTemplate(TCppScope_t scope,
   interop::AppendTypesSlow(proto, arg_types, scope);
   interop::AppendTypesSlow(explicit_params, templ_params, scope);
   interop::TCppMethod_t cppmeth = nullptr;
-  cppmeth = Cpp::BestOverloadFunctionMatch(unresolved_candidate_methods,
-                                           templ_params, arg_types);
+  std::vector<Cpp::FuncRef> ambiguous_candidates;
+  cppmeth =
+      Cpp::BestOverloadFunctionMatch(unresolved_candidate_methods, templ_params,
+                                     arg_types, ambiguous_candidates);
 
   // If overload resolution failed but explicit template arguments were
   // supplied, fall back to direct template-argument substitution: ask Sema
@@ -1612,8 +1625,9 @@ interop::TCppMethod_t interop::GetGlobalOperator(TCppScope_t scope,
     else
       return nullptr;
   }
-  interop::TCppMethod_t cppmeth =
-      Cpp::BestOverloadFunctionMatch(overloads, {}, arg_types);
+  std::vector<Cpp::FuncRef> ambiguous_candidates;
+  interop::TCppMethod_t cppmeth = Cpp::BestOverloadFunctionMatch(
+      overloads, {}, arg_types, ambiguous_candidates);
   if (cppmeth)
     return cppmeth;
   return nullptr;

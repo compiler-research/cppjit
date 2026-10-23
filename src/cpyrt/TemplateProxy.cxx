@@ -5,6 +5,7 @@ using namespace cppjit;
 #include "CPPClassMethod.h"
 #include "CPPConstructor.h"
 #include "CPPFunction.h"
+#include "CPPInstance.h"
 #include "CPPMethod.h"
 #include "CPPOverload.h"
 #include "PyCallable.h"
@@ -81,14 +82,17 @@ PyObject* TemplateProxy::Instantiate(const std::string& fname,
   std::string proto = "";
 
   // adjust arguments for self if this is a rebound global function
+  PyObject* self = nullptr;
   bool isNS = (((CPPScope*)fTI->fPyClass)->fFlags & CPPScope::kIsNamespace);
+  bool isStaticMethod =
+      interop::IsStaticTemplate(((CPPScope*)fTI->fPyClass)->fCppType, fname);
   if (!isNS && cpyrt_PyArgs_GET_SIZE(args, nargsf) &&
-      (!fSelf || (fSelf == Py_None &&
-                  !interop::IsStaticTemplate(
-                      ((CPPScope*)fTI->fPyClass)->fCppType, fname)))) {
+      (!fSelf || (fSelf == Py_None && !isStaticMethod))) {
+    self = args[0];
     args += 1;
     nargsf -= 1;
-  }
+  } else if (fSelf && fSelf != Py_None && !isStaticMethod)
+    self = fSelf;
 
   Py_ssize_t argc = cpyrt_PyArgs_GET_SIZE(args, nargsf);
   if (argc != 0) {
@@ -190,6 +194,14 @@ PyObject* TemplateProxy::Instantiate(const std::string& fname,
 
   // the following causes instantiation as necessary
   interop::TCppScope_t scope = ((CPPClass*)fTI->fPyClass)->fCppType;
+  if (self && CPPInstance_Check(self) && interop::GetName(scope) != fname) {
+    std::string self_name =
+        interop::GetScopedFinalName(((CPPInstance*)self)->ObjectIsA(true));
+    if (proto.empty())
+      proto = self_name + '&';
+    else
+      proto = self_name + "&, " + proto;
+  }
   interop::TCppMethod_t cppmeth =
       interop::GetMethodTemplate(scope, fname, proto);
   if (cppmeth) { // overload stops here

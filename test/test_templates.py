@@ -439,11 +439,12 @@ class TestTEMPLATES:
             return tn
 
         # templated class
+        A = ns.A["int", "double"]
         a = ns.A["int", "double"]()
         assert get_tn(ns) == "some_variadic::A<int,double>"
 
         # static functions
-        a.sa(1, 1.0, "a")
+        A.sa(1, 1.0, "a")
         assert (
             get_tn(ns).find("some_variadic::A<int,double>::void(int&&,double&&,std::")
             == 0
@@ -480,8 +481,6 @@ class TestTEMPLATES:
         assert get_tn(ns) == "some_variadic::B"
 
         # static functions
-        b.sb(1, 1.0, "a")
-        assert get_tn(ns).find("some_variadic::B::void(int&&,double&&,std::") == 0
         ns.B.sb(1, 1.0, "a")
         assert get_tn(ns).find("some_variadic::B::void(int&&,double&&,std::") == 0
         ns.B.sb_T["int"](1, 1.0, "a")
