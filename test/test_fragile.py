@@ -4,6 +4,7 @@ import sys
 import py
 from pytest import mark, raises, skip
 from support import (
+    CLANG_MAJOR,
     IS_CLANG_REPL,
     IS_LINUX,
     IS_MAC,
@@ -646,7 +647,10 @@ class TestFRAGILE:
                 int add42(int i) { return i + 42; }
             }""")
 
-    @mark.xfail(condition=IS_CLANG_REPL, reason="Fails on ClangRepl")
+    @mark.xfail(
+        condition=IS_CLANG_REPL and CLANG_MAJOR < 23,
+        reason="Macro access fails on clang-repl before LLVM 23",
+    )
     def test26_macro(self):
         """Test access to C++ pre-processor macro's"""
 

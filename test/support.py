@@ -129,6 +129,8 @@ IS_CLANG_DEBUG = (
     == 1
 )
 IS_CLING = not IS_CLANG_REPL
+# The interpreter's clang major, which tracks the LLVM major.
+CLANG_MAJOR = cppjit.evaluate("__clang_major__")
 IS_CPP23 = (
     cppjit.evaluate("""#if __cplusplus >= 202302L
                                             true
