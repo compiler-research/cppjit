@@ -24,21 +24,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Breadth beyond the PR matrix (C++17, LLVM 20, arm) and one cling
-        # cell. valgrind runs on LLVM 22 (x86 and arm) against the vendored
-        # clang22 suppressions under .github/valgrind/; the LLVM 20 cells carry
+        # Breadth beyond the PR matrix (C++17, LLVM 22, arm) and one cling
+        # cell. valgrind runs on LLVM 23 (x86 and arm) against the vendored
+        # clang23 suppressions under .github/valgrind/. The LLVM 22 cells carry
         # the older-major breadth.
         include:
-          - { os: ubuntu-24.04,     llvm: '20', flavor: system, py: '3.12', cxx: '17' }
-          - { os: ubuntu-24.04,     llvm: '22', flavor: '',     py: '3.14', cxx: '23' }
-          - { os: ubuntu-24.04,     llvm: '22', flavor: '',     py: '3.13', cxx: '20', vg: true }
-          - { os: ubuntu-24.04,     llvm: '22', flavor: '',     py: '3.14', cxx: '20', vg: true }
-          - { os: ubuntu-24.04,     llvm: '22', flavor: '',     py: '3.14', cxx: '20' }
-          - { os: ubuntu-24.04,     llvm: '22', flavor: '',     py: '3.12', cxx: '20', vg: true }
-          - { os: ubuntu-24.04-arm, llvm: '22', flavor: '',     py: '3.13', cxx: '20', vg: true }
-          - { os: ubuntu-24.04-arm, llvm: '20', flavor: system, py: '3.12', cxx: '17' }
-          - { os: macos-26,         llvm: '22', flavor: system, py: '3.12', cxx: '20' }
-          - { os: macos-26,         llvm: '22', flavor: system, py: '3.14', cxx: '23' }
+          - { os: ubuntu-24.04,     llvm: '22', flavor: system, py: '3.12', cxx: '17' }
+          - { os: ubuntu-24.04,     llvm: '23', flavor: '',     py: '3.14', cxx: '23' }
+          - { os: ubuntu-24.04,     llvm: '23', flavor: '',     py: '3.13', cxx: '20', vg: true }
+          - { os: ubuntu-24.04,     llvm: '23', flavor: '',     py: '3.14', cxx: '20', vg: true }
+          - { os: ubuntu-24.04,     llvm: '23', flavor: '',     py: '3.14', cxx: '20' }
+          - { os: ubuntu-24.04,     llvm: '23', flavor: '',     py: '3.12', cxx: '20', vg: true }
+          - { os: ubuntu-24.04-arm, llvm: '23', flavor: '',     py: '3.13', cxx: '20', vg: true }
+          - { os: ubuntu-24.04-arm, llvm: '22', flavor: system, py: '3.12', cxx: '17' }
+          - { os: macos-26,         llvm: '23', flavor: system, py: '3.12', cxx: '20' }
+          - { os: macos-26,         llvm: '23', flavor: system, py: '3.14', cxx: '23' }
           - { os: macos-26-intel,   llvm: '22', flavor: system, py: '3.12', cxx: '20' }
           # cling backend, against the cached llvm-root (cling-llvm22) recipe cell.
           - { os: ubuntu-24.04,     llvm: '22', flavor: cling,  flavor_version: cling-llvm22, py: '3.13', cxx: '20' }

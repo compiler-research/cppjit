@@ -20,24 +20,24 @@ jobs:
     name: ${{ matrix.os }}/llvm${{ matrix.llvm }}/py${{ matrix.py }}/c++${{ matrix.cxx }}${{ matrix.vg && '/vg' || '' }}${{ matrix.flavor == 'cling' && '/cling' || '' }}
     strategy:
       fail-fast: false
-      # LLVM 22 is the primary target: every supported Python on ubuntu and
+      # LLVM 23 is the primary target: every supported Python on ubuntu and
       # macOS, a C++23 cell (test_cpp23features runs only there), a valgrind
-      # cell, and a cling cell. Linux uses the llvm-release recipe (apt-llvm.org
-      # can't supply the >=22 OOP-JIT runtime for flavor=system); macOS uses
-      # brew llvm@22. When CppInterOp supports LLVM 23 these cells move to 23.
-      # Remaining breadth (C++17, LLVM 20, arm) lives in nightly.
+      # cell, and a cling cell. Linux uses the llvm-release recipe. Arm macOS
+      # uses brew llvm@23. The Intel runner has no llvm@23 formula. Its brew
+      # cell stays on LLVM 22, and a recipe cell covers 23. The cling cell
+      # stays on LLVM 22. Breadth (C++17, LLVM 22, and arm) lives in nightly.
       matrix:
         include:
-          - { os: ubuntu-24.04,   llvm: '22', flavor: '',     py: '3.14', cxx: '20', vg: true }
-          - { os: ubuntu-24.04,   llvm: '22', flavor: '',     py: '3.14', cxx: '20' }
-          - { os: ubuntu-24.04,   llvm: '22', flavor: '',     py: '3.14', cxx: '23' }
-          - { os: ubuntu-24.04,   llvm: '22', flavor: '',     py: '3.13', cxx: '20' }
-          - { os: ubuntu-24.04,   llvm: '22', flavor: '',     py: '3.12', cxx: '20' }
-          - { os: macos-26,       llvm: '22', flavor: system, py: '3.14', cxx: '20' }
-          - { os: macos-26,       llvm: '22', flavor: '',     py: '3.13', cxx: '20' }
-          - { os: macos-26,       llvm: '22', flavor: system, py: '3.12', cxx: '20' }
+          - { os: ubuntu-24.04,   llvm: '23', flavor: '',     py: '3.14', cxx: '20', vg: true }
+          - { os: ubuntu-24.04,   llvm: '23', flavor: '',     py: '3.14', cxx: '20' }
+          - { os: ubuntu-24.04,   llvm: '23', flavor: '',     py: '3.14', cxx: '23' }
+          - { os: ubuntu-24.04,   llvm: '23', flavor: '',     py: '3.13', cxx: '20' }
+          - { os: ubuntu-24.04,   llvm: '23', flavor: '',     py: '3.12', cxx: '20' }
+          - { os: macos-26,       llvm: '23', flavor: system, py: '3.14', cxx: '20' }
+          - { os: macos-26,       llvm: '23', flavor: '',     py: '3.13', cxx: '20' }
+          - { os: macos-26,       llvm: '23', flavor: system, py: '3.12', cxx: '20' }
           - { os: macos-26-intel, llvm: '22', flavor: system, py: '3.14', cxx: '20' }
-          - { os: macos-26-intel, llvm: '22', flavor: '',     py: '3.12', cxx: '20' }
+          - { os: macos-26-intel, llvm: '23', flavor: '',     py: '3.12', cxx: '20' }
           # cling backend, against the cached llvm-root (cling-llvm22) recipe cell.
           - { os: ubuntu-24.04,   llvm: '22', flavor: cling,  flavor_version: cling-llvm22, py: '3.14', cxx: '20' }
     uses: compiler-research/ci-workflows/.github/workflows/cppjit.yml@main
@@ -60,7 +60,7 @@ jobs:
   # twice without failing. A failed find_package caches <pkg>_DIR as -NOTFOUND,
   # and the reconfigure reads that as unset and searches again.
   reconfigure:
-    name: reconfigure/ubuntu-24.04/llvm22
+    name: reconfigure/ubuntu-24.04/llvm23
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -69,7 +69,7 @@ jobs:
           python-version: '3.14'
       - uses: compiler-research/ci-workflows/actions/setup-llvm@main
         with:
-          version: '22'
+          version: '23'
           os: ubuntu-24.04
       - name: Prepare a CppInterOp for the override flows
         run: |
