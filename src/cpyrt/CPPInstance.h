@@ -29,20 +29,24 @@ class CPPInstance {
 public:
   enum EFlags {
     kDefault = 0x0000,
-    kNoWrapConv = 0x0001,  // use type as-is (eg. no smart ptr wrap)
-    kIsOwner = 0x0002,     // Python instance owns C++ object/memory
-    kIsExtended = 0x0004,  // has extended data
-    kIsValue = 0x0008,     // was created from a by-value return
-    kIsReference = 0x0010, // represents one indirection
-    kIsArray = 0x0020,     // represents an array of objects
-    kIsSmartPtr = 0x0040,  // is or embeds a smart pointer
-    kIsPtrPtr = 0x0080,    // represents two indirections
-    kIsRValue = 0x0100,    // can be used as an r-value
-    kIsLValue = 0x0200,    // can be used as an l-value
-    kNoMemReg = 0x0400,    // do not register with memory regulator
-    kIsRegulated = 0x0800, // is registered with memory regulator
-    kIsActual = 0x1000,    // has been downcasted to actual type
-    kHasLifeLine = 0x2000, // has a life line set
+    kNoWrapConv = 0x0001,   // use type as-is (eg. no smart ptr wrap)
+    kIsOwner = 0x0002,      // Python instance owns C++ object/memory
+    kIsExtended = 0x0004,   // has extended data
+    kIsValue = 0x0008,      // was created from a by-value return
+    kIsReference = 0x0010,  // represents one indirection
+    kIsArray = 0x0020,      // represents an array of objects
+    kIsSmartPtr = 0x0040,   // is or embeds a smart pointer
+    kIsPtrPtr = 0x0080,     // represents two indirections
+    kIsRValue = 0x0100,     // can be used as an r-value
+    kIsLValue = 0x0200,     // can be used as an l-value
+    kNoMemReg = 0x0400,     // do not register with memory regulator
+    kIsRegulated = 0x0800,  // is registered with memory regulator
+    kIsActual = 0x1000,     // has been downcasted to actual type
+    kHasLifeLine = 0x2000,  // has a life line set
+    kIsArrayAlloc = 0x4000, // represents a heap allocated array of objects
+    kIsNoConstruct =
+        0x8000, // represents constructor is not called in the allocation
+    kIsMalloc = 0x10000, // is allocated with malloc
   };
 
 public: // public, as the python C-API works with C structs
