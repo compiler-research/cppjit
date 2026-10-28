@@ -5,6 +5,7 @@
 #include "Dimensions.h"
 
 // Standard
+#include <exception>
 #include <string>
 
 namespace cppjit::cpyrt {
@@ -31,6 +32,9 @@ PyObject* BindCppObject(interop::TCppObject_t object,
                         interop::TCppScope_t klass, const unsigned flags = 0);
 PyObject* BindCppObjectArray(interop::TCppObject_t address,
                              interop::TCppScope_t klass, cdims_t dims);
+
+// set the Python error to a proxy of the C++ exception, or a plain Exception
+void SetPyErrFromCppException(std::exception& e);
 
 } // namespace cppjit::cpyrt
 

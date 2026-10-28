@@ -1098,3 +1098,57 @@ class TestADVANCEDCPP:
         assert isinstance(obj3, ns.Visible3)
         assert obj3.value == 23
         assert obj3.z == 7
+
+    @mark.xfail(
+        condition=IS_MAC_ARM,
+        run=False,
+        reason="Crashes with exception not being caught on Apple Silicon",
+    )
+    def test33_throwing_destructor(self):
+        """A noexcept(false) destructor that throws raises in Python"""
+
+        import sys
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        #include <stdexcept>
+        namespace throwing_dtor {
+        int g_count = 0;
+        struct Throws {
+            ~Throws() noexcept(false) {
+                ++g_count;
+                throw std::runtime_error("from dtor");
+            }
+        };
+        Throws make() { return {}; }
+        }""")
+
+        ns = cppjit.gbl.throwing_dtor
+
+        t = ns.Throws()
+        with raises(cppjit.gbl.std.runtime_error, match="from dtor"):
+            t.__destruct__()
+        assert ns.g_count == 1
+        t.__destruct__()  # no longer owned: no second destructor call
+        assert ns.g_count == 1
+
+        v = ns.make()
+        with raises(cppjit.gbl.std.runtime_error, match="from dtor"):
+            v.__destruct__()
+        assert ns.g_count == 2
+
+        # dealloc cannot raise: the error goes to sys.unraisablehook
+        unraisable = []
+        old_hook = sys.unraisablehook
+        sys.unraisablehook = unraisable.append
+        try:
+            t = ns.Throws()
+            del t
+        finally:
+            sys.unraisablehook = old_hook
+        assert ns.g_count == 3
+        assert len(unraisable) == 1
+        assert "from dtor" in str(unraisable[0].exc_value)
+        if sys.version_info >= (3, 13):
+            assert "throwing_dtor::Throws" in unraisable[0].err_msg
