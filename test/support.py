@@ -19,8 +19,9 @@ _NO_TOOLCHAIN = "no make and C++ compiler to build the test dictionaries"
 # a build system that supplies the dictionaries itself sets CPPJIT_TEST_SKIP_MAKE
 _PREBUILT = bool(os.getenv("CPPJIT_TEST_SKIP_MAKE", False))
 # otherwise test/Makefile builds them with make and its default $(CXX)
+#   when checking for the compiler in $(CXX), get rid of compiler options, if any
 _HAS_TOOLCHAIN = bool(
-    shutil.which("make") and shutil.which(os.environ.get("CXX") or "g++")
+    shutil.which("make") and shutil.which((os.environ.get("CXX") or "c++").split()[0])
 )
 
 # for a test that loads a dictionary in a module whose other tests need none
