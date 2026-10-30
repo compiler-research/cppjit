@@ -320,7 +320,18 @@ static PyObject* pt_new(PyTypeObject* subtype, PyObject* args, PyObject* kwds) {
 }
 
 //----------------------------------------------------------------------------
+// The (scope, name) pairs that one lookup has searched through using
+// directives ([namespace.qual]/3), so that using-directive cycles terminate.
+using UsingSearch = std::set<std::pair<PyObject*, std::string>>;
+static thread_local UsingSearch* tUsingSearch = nullptr;
+// Set by the using-directive loop for the scope lookup that it starts next.
+static thread_local bool tUsingHop = false;
+
 static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
+  // read before the type lookup below can run Python code
+  const bool using_hop = tUsingHop;
+  tUsingHop = false;
+
   // normal type-based lookup
   PyObject* attr = PyType_Type.tp_getattro(pyclass, pyname);
   if (pyclass == (PyObject*)&CPPInstance_Type)
@@ -505,19 +516,30 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
       }
     }
 
-    // try all outstanding using namespaces in turn to find the attribute (will
-    // cache locally later; TODO: doing so may cause pathological cases)
-    for (auto pyref : *klass->fImp.fUsing) {
-      PyObject* pyuscope = cpyrt_GetWeakRef(pyref);
-      if (pyuscope) {
-        attr = PyObject_GetAttr(pyuscope, pyname);
-        if (!attr)
-          PyErr_Clear();
-        Py_DECREF(pyuscope);
+    // A hop from the loop below continues its lookup's search; any other
+    // lookup, e.g. from Python code that runs during the loop, starts afresh.
+    UsingSearch fresh;
+    UsingSearch* const outer = tUsingSearch;
+    if (!using_hop || !outer)
+      tUsingSearch = &fresh;
+    if (tUsingSearch->emplace(pyclass, name).second) {
+      // try all outstanding using namespaces in turn to find the attribute
+      // (will cache locally later; TODO: doing so may cause pathological cases)
+      for (auto pyref : *klass->fImp.fUsing) {
+        PyObject* pyuscope = cpyrt_GetWeakRef(pyref);
+        if (pyuscope) {
+          tUsingHop = true;
+          attr = PyObject_GetAttr(pyuscope, pyname);
+          tUsingHop = false;
+          if (!attr)
+            PyErr_Clear();
+          Py_DECREF(pyuscope);
+        }
+        if (attr)
+          break;
       }
-      if (attr)
-        break;
     }
+    tUsingSearch = outer;
   }
 
   // if the attribute was not found but could possibly have been shadowed,
