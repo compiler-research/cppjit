@@ -27,6 +27,13 @@ venv/
 .envrc
 .python-version
 
+# Bazel convenience symlinks and module lock
+/bazel-bin
+/bazel-out
+/bazel-testlogs
+/bazel-cppjit
+MODULE.bazel.lock
+
 # Editors / OS
 .idea/
 .vscode/
