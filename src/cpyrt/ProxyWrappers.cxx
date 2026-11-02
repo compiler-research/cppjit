@@ -1058,3 +1058,55 @@ PyObject* cpyrt::BindCppObjectArray(interop::TCppObject_t address,
   // TODO: this function exists for symmetry; need to figure out if it's useful
   return TupleOfInstances_New(address, klass, dims);
 }
+
+//----------------------------------------------------------------------------
+void cpyrt::SetPyErrFromCppException(std::exception& e) {
+  // attempt to set the exception to the actual type, to allow catching with
+  // the Python C++ type
+  static interop::TCppScope_t exc_type =
+      interop::GetFullScope("std::exception");
+
+  PyObject* pyexc_type = nullptr;
+  PyObject* pyexc_obj = nullptr;
+
+  // TODO: cache the lookup based on TCppType_t
+  interop::TCppScope_t actual = interop::GetActualClass(exc_type, &e);
+  const std::string& finalname = interop::GetScopedFinalName(actual);
+  const std::string& parentname = TypeManip::extract_namespace(finalname);
+  PyObject* parent = CreateScopeProxy(parentname);
+  if (parent) {
+    pyexc_type = PyObject_GetAttrString(
+        parent, parentname.empty()
+                    ? finalname.c_str()
+                    : finalname.substr(parentname.size() + 2, std::string::npos)
+                          .c_str());
+    Py_DECREF(parent);
+  }
+
+  if (pyexc_type) {
+    // create a copy of the exception
+    PyObject* pyclass = cpyrt::GetScopeProxy(actual);
+    PyObject* source = BindCppObjectNoCast(&e, actual);
+    PyObject* pyexc_copy =
+        PyObject_CallFunctionObjArgs(pyclass, source, nullptr);
+    Py_DECREF(source);
+    Py_DECREF(pyclass);
+    if (pyexc_copy) {
+      pyexc_obj = CPPExcInstance_Type.tp_new((PyTypeObject*)pyexc_type, nullptr,
+                                             nullptr);
+      ((CPPExcInstance*)pyexc_obj)->fCppInstance = (PyObject*)pyexc_copy;
+    } else
+      PyErr_Clear();
+  } else
+    PyErr_Clear();
+
+  if (pyexc_type && pyexc_obj) {
+    PyErr_SetObject(pyexc_type, pyexc_obj);
+    Py_DECREF(pyexc_obj);
+    Py_DECREF(pyexc_type);
+  } else {
+    PyErr_Format(PyExc_Exception, "%s (C++ exception)", e.what());
+    Py_XDECREF(pyexc_obj);
+    Py_XDECREF(pyexc_type);
+  }
+}

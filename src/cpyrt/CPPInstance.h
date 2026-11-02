@@ -146,7 +146,7 @@ template <typename T> inline bool CPPInstance_CheckExact(T* object) {
 }
 
 //- helper for memory regulation (no PyTypeObject equiv. member in p2.2) -----
-void op_dealloc_nofree(CPPInstance*);
+bool op_dealloc_nofree(CPPInstance*);
 
 } // namespace cppjit::cpyrt
 
