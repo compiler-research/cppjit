@@ -1772,3 +1772,23 @@ class TestREGRESSION:
         # member function pointers are not function pointers; they are not
         # supported, but must not crash either
         ns.get_mf()
+
+    def test58_repeated_template_scope_lookup(self):
+        """Binding to a templated class by name does not grow the memory"""
+
+        from pytest import importorskip
+
+        psutil = importorskip("psutil")
+
+        import cppjit
+
+        v = cppjit.gbl.std.vector[int]()
+        addr = cppjit.addressof(v)
+        process = psutil.Process()
+        cppjit.bind_object(addr, "std::vector<int>")
+        before = process.memory_info().rss
+        for _ in range(2000):
+            assert type(cppjit.bind_object(addr, "std::vector<int>")) is type(v)
+        # resolving the name used to declare code in the interpreter on every
+        # call, growing the memory by several kB each time
+        assert process.memory_info().rss - before < 4 * 1024 * 1024
