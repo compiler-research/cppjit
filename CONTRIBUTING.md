@@ -4,8 +4,9 @@ Thanks for your interest in cppjit. cppjit embeds an interactive C++ JIT
 compiler in Python, built on
 [CppInterOp](https://github.com/compiler-research/CppInterOp) and the
 clang-repl interpreter in LLVM. It is the successor to
-[cppyy](https://github.com/wlav/cppyy). The project is young and its APIs
-still evolve, so contributions of all kinds are welcome.
+[cppyy](https://github.com/wlav/cppyy). The project is young and a community
+is just starting to form around it, so contributions of all kinds are
+welcome.
 
 This guide covers how to report problems and how to propose changes. For
 building and installing cppjit, see the [README](README.md), which this
@@ -50,9 +51,6 @@ next to cppjit and pass `CPPINTEROP_SOURCE_DIR`, as the README describes. The
 local checkout then overrides the pinned tag.
 
 ## Running the checks locally
-
-A pull request has to pass the same checks that CI runs. Run them before you
-push.
 
 ### Tests
 
