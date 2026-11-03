@@ -10,8 +10,11 @@ include(GNUInstallDirs)
 # This option won't make a lot of sense since we only ship the shared library in site-packages
 # Perhaps this should permanently be OFF and users can build their own CppInterOp if they want to run the tests?
 option(CPPJIT_ENABLE_CPPINTEROP_TESTS "enable CppInterOp tests" OFF)
-set(CPPINTEROP_GIT_REPOSITORY "https://github.com/compiler-research/CppInterOp.git" CACHE STRING "")
-set(CPPINTEROP_GIT_TAG "d3c8cf7aff7796e1539582f8e52910f351a48977" CACHE STRING "")
+# Experimental: debugging of JIT-compiled C++ with gdb (cppjit.debugger, the
+# gdb extension and the libcppjit hooks). Off, the build has none of it.
+option(CPPJIT_ENABLE_DEBUGGER_SUPPORT "build the experimental debugger support" OFF)
+set(CPPINTEROP_GIT_REPOSITORY "https://github.com/chicagotrading/CppInterOp.git" CACHE STRING "")
+set(CPPINTEROP_GIT_TAG "upstreaming/jit-debugging" CACHE STRING "")
 set(CPPINTEROP_SOURCE_DIR "" CACHE PATH
     "Override default CppInterOp built by ExternalProject_Add, with a path to local CppInterOp source")
 
@@ -77,6 +80,7 @@ target_compile_definitions(cppjit PRIVATE
     CPPJIT_CLANG_MAJOR="${CPPJIT_INTEROP_CLANG_MAJOR}"
     CPPJIT_CLANG_INCLUDE_DIR="${CPPJIT_INTEROP_CLANG_DIR}"
     $<$<BOOL:${CPPJIT_USE_CLING}>:CPPJIT_USE_CLING>
+    $<$<BOOL:${CPPJIT_ENABLE_DEBUGGER_SUPPORT}>:CPPJIT_WITH_DEBUGGER_SUPPORT>
 )
 
 target_include_directories(cppjit PRIVATE
@@ -116,10 +120,22 @@ if(NOT SKBUILD)
     set_target_properties(cppjit PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/python/cppjit"
     )
+    set(_cppjit_debugger_tree)
+    if(CPPJIT_ENABLE_DEBUGGER_SUPPORT)
+        set(_cppjit_debugger_tree
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/python/cppjit-debugger"
+                "${CMAKE_BINARY_DIR}/python/cppjit/debugger"
+            COMMAND ${CMAKE_COMMAND} -E rename
+                "${CMAKE_BINARY_DIR}/python/cppjit/debugger/libcppjit.so-gdb.py"
+                "${CMAKE_BINARY_DIR}/python/cppjit/libcppjit.so-gdb.py"
+        )
+    endif()
     add_custom_target(cppjit-python-tree ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/python/cppjit"
             "${CMAKE_BINARY_DIR}/python/cppjit"
+        ${_cppjit_debugger_tree}
     )
 endif()
 
@@ -134,6 +150,19 @@ if(NOT SKBUILD)
     install(DIRECTORY python/cppjit
         DESTINATION .
         PATTERN "__pycache__" EXCLUDE
+    )
+endif()
+
+# The experimental debugger support installs as cppjit.debugger, with the
+# gdb auto-load script beside the extension.
+if(CPPJIT_ENABLE_DEBUGGER_SUPPORT)
+    install(DIRECTORY python/cppjit-debugger/
+        DESTINATION cppjit/debugger
+        PATTERN "__pycache__" EXCLUDE
+        PATTERN "libcppjit.so-gdb.py" EXCLUDE
+    )
+    install(FILES python/cppjit-debugger/libcppjit.so-gdb.py
+        DESTINATION cppjit
     )
 endif()
 

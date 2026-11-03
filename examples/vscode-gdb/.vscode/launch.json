@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "cppjit: demo.py (gdb)",
+            "type": "cppjit-gdb",
+            "request": "launch",
+            "program": "python3",
+            "args": ["${workspaceFolder}/demo.py"],
+            "cwd": "${workspaceFolder}",
+            "env": {"CPPJIT_DEBUGGER_SUPPORT": "1"}
+        },
+        {
+            "name": "cppjit: attach (gdb)",
+            "type": "cppjit-gdb",
+            "request": "attach",
+            "program": "python3",
+            "pid": "${input:pid}"
+        }
+    ],
+    "inputs": [
+        {"id": "pid", "type": "promptString", "description": "Process ID of the Python process"}
+    ]
+}

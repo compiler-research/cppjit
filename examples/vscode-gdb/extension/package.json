@@ -1,0 +1,124 @@
+{
+    "name": "cppjit-gdb",
+    "displayName": "cppjit gdb (example)",
+    "description": "Debug Python processes that JIT-compile C++ with cppjit, through gdb's DAP server.",
+    "publisher": "cppjit-examples",
+    "version": "0.0.7",
+    "license": "BSD-3-Clause-LBNL",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Debuggers"
+    ],
+    "main": "./extension.js",
+    "activationEvents": [
+        "onDebugResolve:cppjit-gdb"
+    ],
+    "contributes": {
+        "breakpoints": [
+            {
+                "language": "cpp"
+            },
+            {
+                "language": "c"
+            },
+            {
+                "language": "python"
+            }
+        ],
+        "debuggers": [
+            {
+                "type": "cppjit-gdb",
+                "label": "cppjit (gdb)",
+                "languages": [
+                    "cpp",
+                    "python"
+                ],
+                "configurationAttributes": {
+                    "launch": {
+                        "required": [
+                            "program"
+                        ],
+                        "properties": {
+                            "program": {
+                                "type": "string",
+                                "default": "python3",
+                                "description": "The Python interpreter."
+                            },
+                            "args": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "cwd": {
+                                "type": "string"
+                            },
+                            "env": {
+                                "type": "object",
+                                "description": "Added to the environment of VS Code."
+                            },
+                            "stopAtBeginningOfMainSubprogram": {
+                                "type": "boolean",
+                                "default": false
+                            },
+                            "gdb": {
+                                "type": "string",
+                                "default": "gdb",
+                                "description": "gdb 16 or later."
+                            },
+                            "cppjitGdbScript": {
+                                "type": "string",
+                                "description": "Path of cppjit/debugger/gdb/cppjit_gdb.py. The default asks the Python interpreter."
+                            },
+                            "internalFrames": {
+                                "type": "string",
+                                "enum": [
+                                    "hide",
+                                    "show"
+                                ],
+                                "default": "hide",
+                                "description": "Show the frames of cppjit, CppInterOp and CPython in the call stack, and step through them."
+                            }
+                        }
+                    },
+                    "attach": {
+                        "required": [
+                            "pid"
+                        ],
+                        "properties": {
+                            "pid": {
+                                "type": [
+                                    "number",
+                                    "string"
+                                ]
+                            },
+                            "program": {
+                                "type": "string",
+                                "default": "python3",
+                                "description": "The Python interpreter."
+                            },
+                            "gdb": {
+                                "type": "string",
+                                "default": "gdb"
+                            },
+                            "cppjitGdbScript": {
+                                "type": "string"
+                            },
+                            "internalFrames": {
+                                "type": "string",
+                                "enum": [
+                                    "hide",
+                                    "show"
+                                ],
+                                "default": "hide",
+                                "description": "Show the frames of cppjit, CppInterOp and CPython in the call stack, and step through them."
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}

@@ -39,6 +39,11 @@ static inline size_t CALL_NARGS(size_t nargs) { return nargs & ~DIRECT_CALL; }
 #include <typeinfo>
 #include <vector>
 
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+#include <cstdio>
+#include <unistd.h>
+#endif
+
 std::recursive_mutex InterOpMutex;
 
 // builtin types
@@ -180,6 +185,27 @@ static void expandOriginInInterpreterArgs() {
 #endif
 }
 
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+// Experimental debugger support (CPPJIT_ENABLE_DEBUGGER_SUPPORT):
+// CPPJIT_DEBUGGER_SUPPORT set to anything but "" or "0" starts a debug
+// session.
+static bool debugSession() {
+  const char* env = getenv("CPPJIT_DEBUGGER_SUPPORT");
+  return env && *env && strcmp(env, "0") != 0;
+}
+
+// The interpreter writes each input to a file in CPPINTEROP_JIT_SOURCE_DIR,
+// for the debugger; cppjit.debugger uses the same default.
+static void setDefaultSourceDir() {
+  if (getenv("CPPINTEROP_JIT_SOURCE_DIR"))
+    return;
+  const char* tmp = getenv("TMPDIR");
+  std::string dir = tmp && *tmp ? tmp : "/tmp";
+  dir += "/cppjit-debug-" + std::to_string(getuid());
+  setenv("CPPINTEROP_JIT_SOURCE_DIR", dir.c_str(), 0);
+}
+#endif
+
 // CppInterOp itself appends CPPINTEROP_EXTRA_INTERPRETER_ARGS inside
 // CreateInterpreter, so nothing needs to be forwarded from here.
 static interop::TInterp_t
@@ -205,6 +231,18 @@ acquireOrCreateInterpreter(const InterOpPaths& Paths) {
     args.push_back("-resource-dir");
     args.push_back(resourceDir.c_str());
   }
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+  if (debugSession()) {
+    args.push_back("-g");
+    args.push_back("-O0");
+    // Clang omits the types that a library instantiates (std::ifstream), and
+    // libstdc++ often has no debug information.
+    args.push_back("-fstandalone-debug");
+    setDefaultSourceDir();
+    // Output of JIT code shows at once when a debugger stops the process.
+    setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+  }
+#endif
   return Cpp::CreateInterpreter(args, /*GpuArgs=*/{});
 }
 
@@ -220,6 +258,10 @@ static void configureInterpreter(const InterOpPaths& Paths) {
 
   // set opt level (default to 2 if not given; Cling itself defaults to 0)
   int optLevel = 2;
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+  if (debugSession())
+    optLevel = 0;
+#endif
 
   if (getenv("CPPJIT_OPT_LEVEL"))
     optLevel = atoi(getenv("CPPJIT_OPT_LEVEL"));
@@ -315,6 +357,50 @@ extern "C" int LoadCppInterOp() {
   });
   return Loaded;
 }
+
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+// cppjit.debugger calls this at a Python line breakpoint; the gdb extension
+// breaks here. The write keeps the call from being folded away.
+// The gdb extension increments the generation at each stop, so that
+// cppjit.debugger reads breakpoints set during the stop before the next line.
+// It sets the step mode (1 into, 2 over, 3 out, 4 return) and the thread for
+// a step through Python lines.
+// During a step, each call into JIT code calls cppjit_debug_enter_jit with
+// its Cpp::JitCall, where the gdb extension can find the called function,
+// and cppjit_debug_leave_jit after it, which calls the hook of
+// cppjit.debugger.
+#if defined(__GNUC__)
+#define CPPJIT_DEBUG_HOOK __attribute__((noinline))
+#else
+#define CPPJIT_DEBUG_HOOK
+#endif
+extern "C" {
+RPY_EXPORTED void cppjit_debug_break_python();
+RPY_EXPORTED void cppjit_debug_enter_jit(const void* call);
+RPY_EXPORTED void cppjit_debug_leave_jit();
+RPY_EXPORTED volatile int cppjit_debug_python_generation = 0;
+RPY_EXPORTED volatile int cppjit_debug_python_step = 0;
+RPY_EXPORTED volatile unsigned long cppjit_debug_python_step_thread = 0;
+RPY_EXPORTED void (*volatile cppjit_debug_python_return_hook)() = nullptr;
+}
+
+extern "C" void cppjit_debug_break_python() {
+  static volatile int Hits = 0;
+  Hits = Hits + 1;
+}
+
+// The debugger breaks in these hooks: they must not be inlined.
+extern "C" CPPJIT_DEBUG_HOOK void cppjit_debug_enter_jit(const void* call) {
+  static const void* volatile Last = nullptr;
+  if (Last != call)
+    Last = call;
+}
+
+extern "C" CPPJIT_DEBUG_HOOK void cppjit_debug_leave_jit() {
+  if (auto* Hook = cppjit_debug_python_return_hook)
+    Hook();
+}
+#endif
 
 // local helpers -------------------------------------------------------------
 static inline char* cppstring_to_cstring(const std::string& cppstr) {
@@ -942,6 +1028,11 @@ static inline bool WrapperCall(interop::TCppMethod_t method, size_t nargs,
   if (Cpp::JitCall JC = Cpp::MakeFunctionCallable(method)) {
     InterOpMutex.unlock();
     bool runRelease = false;
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+    const bool stepping = cppjit_debug_python_step;
+    if (stepping)
+      cppjit_debug_enter_jit(&JC);
+#endif
     // const auto& fgen = /* is_direct ? faceptr.fDirect : */ faceptr;
     if (nargs <= cpyrt::SMALL_ARGS_N) {
       void* smallbuf[cpyrt::SMALL_ARGS_N];
@@ -957,6 +1048,10 @@ static inline bool WrapperCall(interop::TCppMethod_t method, size_t nargs,
       JC.Invoke(result, {buf.data(), nargs}, self);
       // _CLING_CATCH_UNCAUGHT
     }
+#ifdef CPPJIT_WITH_DEBUGGER_SUPPORT
+    if (stepping || cppjit_debug_python_step)
+      cppjit_debug_leave_jit();
+#endif
     if (runRelease)
       release_args(args, nargs);
     return true;
