@@ -37,4 +37,6 @@ MODULE.bazel.lock
 # Editors / OS
 .idea/
 .vscode/
+# the examples ship their launch configurations
+!/examples/*/.vscode/
 .DS_Store
