@@ -1098,3 +1098,85 @@ class TestADVANCEDCPP:
         assert isinstance(obj3, ns.Visible3)
         assert obj3.value == 23
         assert obj3.z == 7
+
+    def test32_using_directive_cycle(self):
+        """Lookup through cyclic using directives searches each namespace once"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace udir_cycle_a {}
+        namespace udir_cycle_p { using namespace udir_cycle_a; int x = 1; }
+        namespace udir_cycle_a { using namespace udir_cycle_p; int y = 2; }""")
+
+        a = cppjit.gbl.udir_cycle_a
+        p = cppjit.gbl.udir_cycle_p
+        assert a.x == 1
+        assert p.y == 2
+
+        with raises(AttributeError):
+            a.nothere
+        with raises(AttributeError):
+            p.nothere
+
+    def test33_using_directive_lookup_from_other_thread(self):
+        """A lookup from another thread does not see a running lookup's search"""
+
+        import threading
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace udir_thread_a {}
+        namespace udir_thread_p { using namespace udir_thread_a; }
+        namespace udir_thread_a { using namespace udir_thread_p; }""")
+
+        a = cppjit.gbl.udir_thread_a
+        p = cppjit.gbl.udir_thread_p
+        started, inner = [], []
+
+        def lookup():
+            try:
+                inner.append(a.hook)
+            except AttributeError:
+                inner.append(None)
+
+        class Hook:
+            # udir_thread_a.hook resolves only through the using directive, so
+            # __get__ runs while that lookup's search is still open
+            def __get__(self, obj, owner):
+                if not started:
+                    started.append(True)
+                    t = threading.Thread(target=lookup)
+                    t.start()
+                    t.join()  # releases the GIL
+                return 42
+
+        p.hook = Hook()
+        assert a.hook == 42
+        assert inner == [42]
+
+    def test34_using_directive_lookup_reentered(self):
+        """A lookup from Python code that runs during a lookup searches afresh"""
+
+        import cppjit
+
+        cppjit.cppdef("""\
+        namespace udir_reenter_a {}
+        namespace udir_reenter_p { using namespace udir_reenter_a; }
+        namespace udir_reenter_a { using namespace udir_reenter_p; }""")
+
+        a = cppjit.gbl.udir_reenter_a
+        p = cppjit.gbl.udir_reenter_p
+        inner = []
+
+        class Hook:
+            def __get__(self, obj, owner):
+                if not inner:
+                    inner.append(None)
+                    inner[0] = a.hook
+                return 42
+
+        p.hook = Hook()
+        assert a.hook == 42
+        assert inner == [42]
