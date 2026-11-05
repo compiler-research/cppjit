@@ -27,6 +27,43 @@ namespace cppjit::cpyrt {
 
 extern PyTypeObject CPPInstance_Type;
 
+//- undo support -------------------------------------------------------------
+// (weak ref to the scope or metaclass, attribute name), oldest first
+static std::vector<std::pair<PyObject*, PyObject*>> gScopeCacheLog;
+
+void LogScopeCache(PyObject* scope, PyObject* name) {
+  PyObject* ref = PyWeakref_NewRef(scope, nullptr);
+  if (!ref) {
+    PyErr_Clear();
+    return;
+  }
+  Py_INCREF(name);
+  gScopeCacheLog.emplace_back(ref, name);
+}
+
+size_t ScopeCacheLogSize() { return gScopeCacheLog.size(); }
+
+void DropScopeCacheSince(size_t size) {
+  while (gScopeCacheLog.size() > size) {
+    auto [ref, name] = gScopeCacheLog.back();
+    gScopeCacheLog.pop_back();
+    if (PyObject* scope = cpyrt_GetWeakRef(ref)) {
+      if (PyType_Type.tp_setattro(scope, name, nullptr) < 0)
+        PyErr_Clear();
+      Py_DECREF(scope);
+    }
+    Py_DECREF(ref);
+    Py_DECREF(name);
+  }
+}
+
+static int CacheOnScope(PyObject* scope, PyObject* name, PyObject* attr) {
+  int rc = PyType_Type.tp_setattro(scope, name, attr);
+  if (rc == 0)
+    LogScopeCache(scope, name);
+  return rc;
+}
+
 //- helpers ------------------------------------------------------------------
 static inline PyObject*
 add_template(PyObject* pyclass, const std::string& name,
@@ -42,7 +79,7 @@ add_template(PyObject* pyclass, const std::string& name,
     PyErr_Clear();
     pytmpl = TemplateProxy_New(ncl, ncl, pyclass);
     // cache the template on its clean name
-    PyType_Type.tp_setattro(pyclass, pyncl, (PyObject*)pytmpl);
+    CacheOnScope(pyclass, pyncl, (PyObject*)pytmpl);
     Py_DECREF(pyncl);
   } else if (!TemplateProxy_CheckExact((PyObject*)pytmpl)) {
     Py_DECREF(pytmpl);
@@ -460,7 +497,7 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
     if (attr) {
       // cache the result
       if (CPPDataMember_Check(attr)) {
-        PyType_Type.tp_setattro((PyObject*)Py_TYPE(pyclass), pyname, attr);
+        CacheOnScope((PyObject*)Py_TYPE(pyclass), pyname, attr);
 
         Py_DECREF(attr);
         // The call below goes through "dm_get"
@@ -468,7 +505,7 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
         if (!attr && PyErr_Occurred())
           Utility::FetchError(errors);
       } else
-        PyType_Type.tp_setattro(pyclass, pyname, attr);
+        CacheOnScope(pyclass, pyname, attr);
 
     } else {
       Utility::FetchError(errors);
@@ -529,7 +566,7 @@ static PyObject* meta_getattro(PyObject* pyclass, PyObject* pyname) {
       Py_DECREF(possibly_shadowed);
     } else {
       attr = possibly_shadowed;
-      PyType_Type.tp_setattro(pyclass, pyname, attr);
+      CacheOnScope(pyclass, pyname, attr);
     }
   }
 

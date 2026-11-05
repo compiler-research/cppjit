@@ -895,6 +895,43 @@ static PyObject* AddSmartPtrType(PyObject*, PyObject* args) {
 }
 
 //----------------------------------------------------------------------------
+static PyObject* InputCount(PyObject*, PyObject*) {
+  return PyLong_FromSize_t(Cpp::GetInputCount());
+}
+
+//----------------------------------------------------------------------------
+// Not through a JIT wrapper: undo would withdraw the wrapper.
+static PyObject* UndoInputsTo(PyObject*, PyObject* pykeep) {
+  size_t keep = PyLong_AsSize_t(pykeep);
+  if (keep == (size_t)-1 && PyErr_Occurred())
+    return nullptr;
+  size_t count = Cpp::GetInputCount();
+  if (keep > count) {
+    PyErr_SetString(PyExc_ValueError, "checkpoint is ahead of the interpreter");
+    return nullptr;
+  }
+  if (keep == count)
+    Py_RETURN_TRUE;
+  if (Cpp::Undo((unsigned)(count - keep)) != 0)
+    Py_RETURN_FALSE;
+  Py_RETURN_TRUE;
+}
+
+//----------------------------------------------------------------------------
+static PyObject* ScopeCacheSize(PyObject*, PyObject*) {
+  return PyLong_FromSize_t(ScopeCacheLogSize());
+}
+
+//----------------------------------------------------------------------------
+static PyObject* DropScopeCache(PyObject*, PyObject* pysize) {
+  size_t size = PyLong_AsSize_t(pysize);
+  if (size == (size_t)-1 && PyErr_Occurred())
+    return nullptr;
+  DropScopeCacheSince(size);
+  Py_RETURN_NONE;
+}
+
+//----------------------------------------------------------------------------
 static PyObject* BeginCaptureStderr(PyObject*, PyObject*) {
   gOldErrorBuffer = std::cerr.rdbuf();
   std::cerr.rdbuf(gCapturedError.rdbuf());
@@ -969,6 +1006,14 @@ static PyMethodDef gcpyrtMethods[] = {
      (char*)"Modify held C++ object ownership."},
     {(char*)"AddSmartPtrType", (PyCFunction)AddSmartPtrType, METH_VARARGS,
      (char*)"Add a smart pointer to the list of known smart pointer types."},
+    {(char*)"_input_count", (PyCFunction)InputCount, METH_NOARGS,
+     (char*)"Number of inputs the interpreter holds."},
+    {(char*)"_undo_inputs_to", (PyCFunction)UndoInputsTo, METH_O,
+     (char*)"Undo the inputs after the given input count."},
+    {(char*)"_scope_cache_size", (PyCFunction)ScopeCacheSize, METH_NOARGS,
+     (char*)"Number of lookups cached on scope proxies."},
+    {(char*)"_drop_scope_cache_since", (PyCFunction)DropScopeCache, METH_O,
+     (char*)"Drop the lookups cached after the given count."},
     {(char*)"_begin_capture_stderr", (PyCFunction)BeginCaptureStderr,
      METH_NOARGS, (char*)"Begin capturing stderr to a in memory buffer."},
     {(char*)"_end_capture_stderr", (PyCFunction)EndCaptureStderr, METH_NOARGS,

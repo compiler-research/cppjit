@@ -122,9 +122,10 @@ static inline void AddPropertyToClass(PyObject* pyclass,
 static inline void AddScopeToParent(PyObject* parent, const std::string& name,
                                     PyObject* newscope) {
   PyObject* pyname = PyUnicode_InternFromString((char*)name.c_str());
-  if (CPPScope_Check(parent))
-    PyType_Type.tp_setattro(parent, pyname, newscope);
-  else
+  if (CPPScope_Check(parent)) {
+    if (PyType_Type.tp_setattro(parent, pyname, newscope) == 0)
+      LogScopeCache(parent, pyname);
+  } else
     PyObject_SetAttr(parent, pyname, newscope);
   Py_DECREF(pyname);
 }

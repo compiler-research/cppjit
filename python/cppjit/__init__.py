@@ -35,6 +35,7 @@ __author__ = "Wim Lavrijsen <WLavrijsen@lbl.gov>"
 
 __all__ = [
     "cppdef",  # declare C++ source to Cling
+    "undo",  # undo the last successful cppdef or cppexec
     "cppexec",  # execute a C++ statement
     "macro",  # attempt to evaluate a cpp macro
     "include",  # load and jit a header file
@@ -218,15 +219,65 @@ class _stderr_capture(object):
             self.err = _end_capture_stderr()
 
 
+# Checkpoint per successful cppdef/cppexec: (input count, scope cache size).
+_cells = []
+
+
+def _begin_cell():
+    return (_backend._input_count(), _backend._scope_cache_size())
+
+
+def _end_cell(mark, ok):
+    # CppInterOp withdraws a failed input itself.
+    if ok:
+        _cells.append(mark)
+
+
+def _abort_cell(mark):
+    # A C++ exception unwinds past CppInterOp's own withdraw.
+    _backend._undo_inputs_to(mark[0])
+    _backend._drop_scope_cache_since(mark[1])
+
+
+def undo():
+    """Undo the last successful cppdef or cppexec, with the JIT code made since."""
+    if not _cells:
+        raise RuntimeError("nothing to undo")
+    count, cached = _cells.pop()
+    if not _backend._undo_inputs_to(count):
+        raise RuntimeError("the interpreter refused to undo")
+    # Cached proxies may point into the withdrawn code.
+    _backend._drop_scope_cache_since(cached)
+
+
+def _cpp_undo(N=1):
+    """Cpp::Undo, called from C so it cannot withdraw its own JIT call wrapper."""
+    count = _backend._input_count()
+    if N > count or not _backend._undo_inputs_to(count - N):
+        return 1
+    return 0
+
+
+gbl.Cpp.Undo = _cpp_undo
+
+
 def cppdef(src, verbose=True):
     """Declare C++ source <src> to Cling."""
+    mark = _begin_cell()
     with _stderr_capture() as err:
-        errcode = gbl.Cpp.Declare(src, not verbose)
+        try:
+            errcode = gbl.Cpp.Declare(src, not verbose)
+        except Exception:
+            _abort_cell(mark)
+            raise
     if not errcode == 0 or err.err:
         if "warning" in err.err.lower() and "error" not in err.err.lower():
+            _end_cell(mark, True)
             warnings.warn(err.err, SyntaxWarning)
             return True
+        _end_cell(mark, False)
         raise SyntaxError("Failed to parse the given C++ code%s" % err.err)
+    _end_cell(mark, True)
     return True
 
 
@@ -237,18 +288,22 @@ def cppexec(stmt):
 
     # capture stderr, but note that Process could legitimately be writing to
     # std::cerr, in which case the captured output needs to be printed as normal
+    mark = _begin_cell()
     with _stderr_capture() as err:
         errcode = ctypes.c_int(0)
         try:
             errcode = gbl.Cpp.Process(stmt)
         except Exception as e:
+            _abort_cell(mark)
             sys.stderr.write("%s\n\n" % str(e))
             if not errcode.value:
                 errcode.value = 1
 
     if not errcode == 0:
+        _end_cell(mark, False)
         raise SyntaxError("Failed to parse the given C++ code%s" % err.err)
-    elif err.err and err.err[1:] != "\n":
+    _end_cell(mark, True)
+    if err.err and err.err[1:] != "\n":
         sys.stderr.write(err.err[1:])
 
     return True
