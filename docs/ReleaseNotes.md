@@ -16,7 +16,9 @@ This release supports Python 3.12-3.14 and LLVM 21-22.
 
 ## New features
 
-- ...
+- A failed `cppdef` or `cppexec` leaves the interpreter as it was, also
+  when it fails to link or its initializer throws. `cppjit.undo()` withdraws
+  the last successful `cppdef` or `cppexec`. See [Undo](Undo.md).
 
 ## Deprecated features
 

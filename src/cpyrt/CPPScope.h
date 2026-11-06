@@ -112,6 +112,12 @@ inline CPPScope* CPPScopeMeta_New(interop::TCppScope_t klass, PyObject* args) {
   return pymeta;
 }
 
+//- undo support -------------------------------------------------------------
+// Lookups cached on scope proxies, so that undo can drop outdated ones.
+void LogScopeCache(PyObject* scope, PyObject* name);
+size_t ScopeCacheLogSize();
+void DropScopeCacheSince(size_t size);
+
 } // namespace cppjit::cpyrt
 
 #endif // !CPYRT_CPPSCOPE_H
