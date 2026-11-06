@@ -478,7 +478,6 @@ class TestCPP11FEATURES:
             gc.collect()
             assert TestSmartPtr.s_counter == 0
 
-    @mark.xfail(condition=IS_MAC, reason="Fails for MacOS 26")
     def test15_unique_ptr_template_deduction(self):
         """Argument type deduction with std::unique_ptr"""
 
@@ -498,7 +497,6 @@ class TestCPP11FEATURES:
         with raises(ValueError):  # not an RValue
             cppjit.gbl.UniqueTempl.returnptr[int](uptr_in)
 
-    @mark.xfail(condition=IS_MAC, reason="Fails on Mac platforms")
     def test16_unique_ptr_moves(self):
         """std::unique_ptr requires moves"""
 
