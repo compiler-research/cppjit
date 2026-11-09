@@ -90,6 +90,36 @@ struct memOwner {
 
 [[clang::annotate("cppDeallocDelete", 2)]]
 void releaseFree(memOwner* self, memOwn* obj);
-} // namespace memory
 
+// A raw pointer to a builtin type binds to a LowLevelView, not an instance
+[[clang::annotate("cppAllocNewArr")]]
+int* allocIntNewArr(int count);
+
+[[clang::annotate("cppAllocOperatorNewArr")]]
+int* allocIntOperatorNewArr(size_t count);
+
+[[clang::annotate("cppAllocNew")]]
+int* allocIntNew();
+
+[[clang::annotate("cppAllocOperatorNew")]]
+int* allocIntOperatorNew();
+
+[[clang::annotate("cppAllocMalloc")]]
+int* allocIntMalloc(size_t count);
+
+// No ownership attribute anywhere
+int* intNoAttrAlloc();
+
+[[clang::annotate("cppDeallocDeleteArr", 1)]]
+void releaseBufferArr(int* buf);
+
+[[clang::annotate("cppDeallocDelete", 1)]]
+void releaseBuffer(int* buf);
+
+[[clang::annotate("cppDeallocFree", 1)]]
+void releaseBufferMalloc(int* buf);
+
+[[clang::annotate("cppDeallocNone", 1)]]
+void keepBuffer(int* buf);
+} // namespace memory
 #endif // MEMORY_ANALYSIS_H
