@@ -1,0 +1,42 @@
+# aarch64 companion to cppinterop-clang23-valgrind.supp, loaded by the CI
+# composite on arm valgrind cells as clang23-valgrind_arm.supp.
+#
+# clang-23 reads uninitialised bytes in several Sema and AST paths that
+# stay clean on x86_64 but trip on aarch64, so the shared file's
+# llvm/llvm-project#194147 family does not cover them. Unlike the
+# clang-22 arm file, this cell's libclangCppInterOp.so now carries local
+# symbol names, so these are anchored by function name like the x86_64
+# file rather than on obj: frames. Taken from valgrind's
+# --gen-suppressions output on the arm nightly (7 contexts, all under
+# type deduction, auto return-type synthesis, and concept checking).
+#
+# Drop together with the #194147 family once the upstream fix lands.
+
+{
+   llvm/llvm-project#194147: getAutoType FoldingSet compare (aarch64)
+   Memcheck:Cond
+   fun:bcmp
+   fun:_ZNK4llvm16FoldingSetNodeIDeqERKS0_
+   fun:_ZNK5clang10ASTContext11getAutoTypeENS_11DeducedKindENS_8QualTypeENS_15AutoTypeKeywordEPNS_12TemplateDeclEN4llvm8ArrayRefINS_16TemplateArgumentEEE
+   ...
+}
+{
+   llvm/llvm-project#194147: GetDeclSpecTypeForDeclarator (aarch64)
+   Memcheck:Cond
+   fun:_ZL28GetDeclSpecTypeForDeclaratorRN12_GLOBAL__N_119TypeProcessingStateERPN5clang14TypeSourceInfoE
+   fun:_ZN5clang4Sema20GetTypeForDeclaratorERNS_10DeclaratorE
+   ...
+}
+{
+   llvm/llvm-project#194147: AutoTypeLoc::getLocalSourceRange (aarch64)
+   Memcheck:Value8
+   fun:_ZNK5clang11AutoTypeLoc19getLocalSourceRangeEv
+   fun:_ZN5clang7TypeLoc23getLocalSourceRangeImplES0_
+   ...
+}
+{
+   llvm/llvm-project#194147: BuildExprRequirement constraint check (aarch64)
+   Memcheck:Cond
+   fun:_ZN5clang4Sema20BuildExprRequirementEPNS_4ExprEbNS_14SourceLocationENS_8concepts15ExprRequirement21ReturnTypeRequirementE
+   ...
+}
