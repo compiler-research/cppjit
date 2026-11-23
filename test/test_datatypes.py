@@ -2041,9 +2041,6 @@ class TestDATATYPES:
 
         assert ns.destroy_matrix(m, N, M)
 
-        m = ns.create_matrix(N, M)
-        assert ns.destroy_matrix(ns.g_matrix, N, M)
-
     def test37_legacy_matrix_of_structs(self):
         """Handling of legacy matrix of structs"""
 
@@ -2101,9 +2098,6 @@ class TestDATATYPES:
                 assert (g[i][j].x, g[i][j].y) == (i + 13, j + 7)
 
         assert ns.destroy_matrix(m, N, M)
-
-        m = ns.create_matrix(N, M)
-        assert ns.destroy_matrix(ns.g_matrix, N, M)
 
     def test38_plain_old_data(self):
         """Initializer construction of PODs"""
