@@ -477,6 +477,379 @@ class TestMEMORYANALYSIS:
         gc.collect()
 
 
+class TestLOWLEVELVIEWMEMORY:
+    def setup_class(cls):
+        cls.test_dct = test_dct
+        import cppjit
+
+        cppjit.add_include_path(str(currpath.join("cpp", "MemoryOwnership")))
+        cppjit.include("../memory_analysis.h")
+        cls.memory_analysis = cppjit.load_library(cls.test_dct + ".so")
+
+    def test01_newarr_attr(self):
+        import cppjit
+        import cppjit.types
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+        assert type(view) == cppjit.types.LowLevelView
+        assert view.__python_owns__
+        assert view.__cpp_array__
+        assert not view.__is_new__
+
+        # the view frees the buffer with ::operator delete[]
+        del view
+        gc.collect()
+
+    def test02_operator_newarr_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntOperatorNewArr(4)
+        assert view.__python_owns__
+        assert view.__cpp_array__
+        assert not view.__is_new__
+
+        del view
+        gc.collect()
+
+    def test03_new_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNew()
+        assert view.__python_owns__
+        assert view.__is_new__
+        assert not view.__cpp_array__
+
+        # the view frees the buffer with ::operator delete
+        del view
+        gc.collect()
+
+    def test04_operator_new_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntOperatorNew()
+        assert view.__python_owns__
+        assert view.__is_new__
+        assert not view.__cpp_array__
+
+        del view
+        gc.collect()
+
+    def test05_malloc_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntMalloc(4)
+        assert view.__python_owns__
+        # malloc has no flag of its own: no allocation flag means free()
+        assert not view.__cpp_array__
+        assert not view.__is_new__
+
+        del view
+        gc.collect()
+
+    def test06_no_attr(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.intNoAttrAlloc()
+        assert not view.__python_owns__
+
+        # function has no attribute, so the flags stay as ll_new wrote them:
+        # the user takes ownership, therefore the default delete[] is called
+        view.__python_owns__ = True
+        assert view.__cpp_array__
+        assert not view.__is_new__
+
+        del view
+        gc.collect()
+
+    def test07_release_newarr_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+        assert view.__python_owns__
+
+        cppjit.gbl.memory.releaseBufferArr(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test08_release_newarr_buffer_keyword(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+
+        cppjit.gbl.memory.releaseBufferArr(buf=view)
+        assert not view.__python_owns__
+
+    def test09_release_new_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNew()
+
+        cppjit.gbl.memory.releaseBuffer(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test10_release_malloc_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntMalloc(4)
+
+        cppjit.gbl.memory.releaseBufferMalloc(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test11_keep_buffer(self):
+        import cppjit
+
+        view = cppjit.gbl.memory.allocIntNewArr(4)
+
+        # a cppDeallocNone parameter leaves the ownership where it was
+        cppjit.gbl.memory.keepBuffer(view)
+        assert view.__python_owns__
+
+        del view
+        gc.collect()
+
+    def test12_release_with_free(self):
+        import cppjit
+
+        view = cppjit.gbl.malloc(16)
+
+        cppjit.gbl.free(view)
+        assert not view.__python_owns__
+
+        del view
+        gc.collect()
+
+
+class TestMEMORYANALYZER:
+    def setup_class(cls):
+        cls.test_dct = test_dct
+        import cppjit
+
+        cppjit.add_include_path(str(currpath.join("cpp", "MemoryOwnership")))
+        cppjit.include("../memory_analysis.h")
+        cls.memory_analysis = cppjit.load_library(cls.test_dct + ".so")
+
+    def teardown_class(cls):
+        import cppjit
+
+        # the flag is global, so the tests that follow must not inherit it
+        cppjit.use_memory_analyzer(False)
+
+    def test01_alloc_with_analyzer_off(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(False)
+
+        obj = cppjit.gbl.memory.analyzerOffAllocNew()
+        assert not obj.__python_owns__
+
+        obj.__python_owns__ = True
+
+    def test02_alloc_with_new(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        cppjit.gbl.memory.memOwn.dtorCount = 0
+
+        obj = cppjit.gbl.memory.analyzerAllocNew()
+        assert obj.__python_owns__
+        assert not obj.__is_array_alloc__
+        assert not obj.__is_malloc__
+
+        del obj
+        gc.collect()
+        assert cppjit.gbl.memory.memOwn.dtorCount == 1
+
+    def test03_alloc_with_newarr(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        cppjit.gbl.memory.memOwn.dtorCount = 0
+
+        obj = cppjit.gbl.memory.analyzerAllocNewArr()
+        assert obj.__python_owns__
+        assert obj.__is_array_alloc__
+
+        del obj
+        gc.collect()
+        assert cppjit.gbl.memory.memOwn.dtorCount == 5
+
+    def test04_alloc_with_malloc(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        cppjit.gbl.memory.memOwn.dtorCount = 0
+
+        obj = cppjit.gbl.memory.analyzerAllocMalloc()
+        assert obj.__python_owns__
+        assert obj.__is_malloc__
+
+        del obj
+        gc.collect()
+        assert cppjit.gbl.memory.memOwn.dtorCount == 0
+
+    def test05_cached_answer_(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+
+        first = cppjit.gbl.memory.analyzerCachedAllocNew()
+        assert first.__python_owns__
+
+        cppjit.use_memory_analyzer(False)
+        second = cppjit.gbl.memory.analyzerCachedAllocNew()
+        assert second.__python_owns__
+
+    def test06_release_bound_positional(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        obj = cppjit.gbl.memory.memOwn(5)
+        assert obj.__python_owns__
+
+        owner.analyzerRelease(obj)
+        assert not obj.__python_owns__
+        assert owner.__python_owns__
+
+    def test07_release_bound_keyword(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerRelease(obj=obj)
+        assert not obj.__python_owns__
+        assert owner.__python_owns__
+
+    def test08_release_unbound_positional(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        cppjit.gbl.memory.analyzerOwner.analyzerRelease(owner, obj)
+        assert not obj.__python_owns__
+        assert owner.__python_owns__
+
+    def test09_release_second_parameter(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        keep = cppjit.gbl.memory.memOwn(5)
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerReleaseSecond(keep, obj)
+        assert not obj.__python_owns__
+        assert keep.__python_owns__
+        assert owner.__python_owns__
+
+    def test10_release_second_parameter_keyword_reversed(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        keep = cppjit.gbl.memory.memOwn(5)
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerReleaseSecond(obj=obj, keep=keep)
+        assert not obj.__python_owns__
+        assert keep.__python_owns__
+
+    def test11_release_static_from_class(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        cppjit.gbl.memory.analyzerOwner.analyzerReleaseStatic(obj)
+        assert not obj.__python_owns__
+
+    def test12_release_static_from_instance(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerReleaseStatic(obj)
+        assert not obj.__python_owns__
+        assert owner.__python_owns__
+
+    def test13_release_free_function(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        cppjit.gbl.memory.analyzerReleaseFree(obj)
+        assert not obj.__python_owns__
+
+    def test14_attribute_wins(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        cppjit.gbl.memory.memOwn.dtorCount = 0
+        owner = cppjit.gbl.memory.analyzerOwner()
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerAttrWins(obj)
+        # the attribute says delete although the body frees nothing, and the
+        # attribute wins
+        assert not obj.__python_owns__
+        assert cppjit.gbl.memory.memOwn.dtorCount == 0
+
+        obj.__python_owns__ = True
+        del obj
+        gc.collect()
+        assert cppjit.gbl.memory.memOwn.dtorCount == 1
+
+    def test15_attribute_and_body_on_different_arg(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        keep = cppjit.gbl.memory.memOwn(5)
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerMixedSlots(keep, obj)
+        assert keep.__python_owns__
+        assert not obj.__python_owns__
+
+    def test16_release_with_analyzer_off(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(False)
+        owner = cppjit.gbl.memory.analyzerOwner()
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        owner.analyzerOffRelease(obj)
+        assert obj.__python_owns__
+
+        obj.__python_owns__ = False
+
+    def test17_release_without_a_body(self):
+        import cppjit
+
+        cppjit.use_memory_analyzer(True)
+        obj = cppjit.gbl.memory.memOwn(5)
+
+        cppjit.gbl.memory.analyzerNoBodyRelease(obj)
+        assert obj.__python_owns__
+
+        obj.__python_owns__ = False
+
+
 @mark.skipif(not IN_CHILD, reason="needs " + FLAGS)
 class TestMEMORYANALYSIS_APINOTES:
     def setup_class(cls):

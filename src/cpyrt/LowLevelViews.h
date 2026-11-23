@@ -19,8 +19,9 @@ public:
     kDefault = 0x0000,
     kIsCppArray = 0x0001, // allocated with new[]
     kIsFixed = 0x0002,    // fixed size array (assumed flat)
-    kIsOwner = 0x0004
-  }; // Python owns
+    kIsOwner = 0x0004,    // Python owns
+    kIsNew = 0x0008       // memory is allocated with new
+  };
 
 public:
   PyObject_HEAD Py_buffer fBufInfo;
