@@ -132,7 +132,7 @@ function(cppjit_add_cppinterop)
             -DCMAKE_INSTALL_PREFIX=${CPPINTEROP_STAGE_DIR}
             -DCMAKE_INSTALL_LIBDIR=lib
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-            -DCMAKE_CXX_STANDARD=17
+            -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
         )
 
         if(CPPJIT_USE_CLING)
