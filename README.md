@@ -137,6 +137,22 @@ Building from source requires:
 - CppInterOp, cloned at build time or supplied from a local checkout
   (see the development builds below)
 
+### C++ standard
+
+The default for `cppjit` is to use the default standard for the compiler, which is 
+typically C++ 17 currently.
+
+If you want to ship a more recent version, you may use the `CPPINTEROP_EXTRA_INTERPRETER_ARGS`
+environment variable, e.g.:
+
+```shell
+export CPPINTEROP_EXTRA_INTERPRETER_ARGS="-std=c++23"
+```
+
+Beware:this environment variable must be set **at runtime** to be properly taken into
+account.
+
+
 ### Source installation (pip)
 
 <details>
